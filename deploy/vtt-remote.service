@@ -1,0 +1,56 @@
+# VTT Remote Relay - systemd service
+#
+# Installation:
+#   1. Copy binary to /opt/vtt-remote/vtt-relay
+#   2. Copy client files to /opt/vtt-remote/client/
+#   3. Copy this file to /etc/systemd/system/vtt-remote.service
+#   4. sudo systemctl daemon-reload
+#   5. sudo systemctl enable --now vtt-remote
+
+[Unit]
+Description=VTT Remote Relay Server
+Documentation=https://github.com/sam-phinizy/vtt-remote
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vttremote
+Group=vttremote
+
+# Working directory
+WorkingDirectory=/opt/vtt-remote
+
+# Binary location
+ExecStart=/opt/vtt-remote/vtt-relay
+
+# Environment
+Environment=PORT=8181
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=256M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vtt-remote
+
+[Install]
+WantedBy=multi-user.target

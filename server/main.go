@@ -61,6 +61,9 @@ func main() {
 	// WebSocket endpoint for relay
 	mux.HandleFunc("/ws", handleWebSocket)
 
+	// Health check endpoint
+	mux.HandleFunc("/health", handleHealth)
+
 	// Start HTTP server (bind to all interfaces for LAN access)
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("VTT Remote server starting:")
@@ -118,6 +121,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("New WebSocket connection from %s", r.RemoteAddr)
 	relay.HandleClient(conn)
+}
+
+// handleHealth returns a simple health check response.
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 // getLocalIP returns the preferred outbound IP of this machine.

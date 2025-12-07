@@ -1,0 +1,72 @@
+# VTT Remote - Docker Compose
+#
+# Usage:
+#   docker compose up -d
+#
+# With Traefik (recommended for SSL):
+#   docker compose --profile traefik up -d
+
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: vtt-relay
+    restart: unless-stopped
+    ports:
+      - "8181:8181"
+    environment:
+      - PORT=8181
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Optional: Traefik for automatic SSL with Let's Encrypt
+  traefik:
+    image: traefik:v3.0
+    container_name: vtt-traefik
+    profiles:
+      - traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+
+  # Relay with Traefik labels (use this instead of relay when using traefik profile)
+  relay-traefik:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: vtt-relay
+    profiles:
+      - traefik
+    restart: unless-stopped
+    environment:
+      - PORT=8181
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vtt.rule=Host(`${VTT_DOMAIN:-vtt-remote.example.com}`)"
+      - "traefik.http.routers.vtt.entrypoints=websecure"
+      - "traefik.http.routers.vtt.tls.certresolver=letsencrypt"
+      - "traefik.http.services.vtt.loadbalancer.server.port=8181"
+
+volumes:
+  traefik-certs:
