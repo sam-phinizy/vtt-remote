@@ -22,6 +22,19 @@
   display: inline-block;
 }
 
+/* QR code container */
+.vtt-remote-qr {
+  margin: 1rem auto;
+  display: flex;
+  justify-content: center;
+}
+
+.vtt-remote-qr canvas {
+  border-radius: 8px;
+  background: white;
+  padding: 0.5rem;
+}
+
 /* Connection status indicator */
 .vtt-remote-status {
   display: flex;

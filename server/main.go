@@ -17,6 +17,8 @@ import (
 	"github.com/nats-io/nats-server/v2/server"
 )
 
+var relay *Relay
+
 //go:embed public/*
 var publicFS embed.FS
 
@@ -37,6 +39,13 @@ func main() {
 		log.Fatalf("Failed to start NATS: %v", err)
 	}
 	defer natsServer.Shutdown()
+
+	// Create relay connected to embedded NATS
+	relay, err = NewRelay(natsServer.ClientURL())
+	if err != nil {
+		log.Fatalf("Failed to create relay: %v", err)
+	}
+	defer relay.Close()
 
 	// Set up HTTP routes
 	mux := http.NewServeMux()
@@ -100,26 +109,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WebSocket upgrade failed: %v", err)
 		return
 	}
-	defer conn.Close()
-
-	// TODO: Implement WebSocket <-> NATS bridge
-	// - Read room code from initial message
-	// - Subscribe to NATS subject for that room
-	// - Relay messages bidirectionally
 
 	log.Printf("New WebSocket connection from %s", r.RemoteAddr)
-
-	for {
-		messageType, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("WebSocket read error: %v", err)
-			break
-		}
-
-		// Echo for now - will be replaced with NATS relay
-		if err := conn.WriteMessage(messageType, message); err != nil {
-			log.Printf("WebSocket write error: %v", err)
-			break
-		}
-	}
+	relay.HandleClient(conn)
 }

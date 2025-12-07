@@ -8,8 +8,12 @@ dist/
 *.so
 *.dylib
 
+# Task runner cache
+.task/
+
 # Go
 server/vtt-remote
+server/server
 *.test
 *.out
 coverage.txt
@@ -40,7 +44,8 @@ yarn-error.log*
 # Foundry module dev
 foundry-module/dist/
 
-# Don't ignore the .keep file in server/public
+# Generated client files in server/public (built from client/)
+server/public/*
 !server/public/.keep
 
 # Logs

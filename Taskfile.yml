@@ -55,6 +55,12 @@ tasks:
     cmds:
       - go run .
 
+  test:server:
+    desc: Run Go server tests
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go test -v -race ./...
+
   # ================================
   # Foundry Module
   # ================================
@@ -109,6 +115,20 @@ tasks:
   # ================================
   # Quality Checks
   # ================================
+
+  test:module:
+    desc: Run Foundry module unit tests
+    dir: '{{.MODULE_DIR}}'
+    deps: [install:module]
+    cmds:
+      - npm run test
+
+  test:module:watch:
+    desc: Run Foundry module tests in watch mode
+    dir: '{{.MODULE_DIR}}'
+    deps: [install:module]
+    cmds:
+      - npm run test:watch
 
   typecheck:
     desc: Type check Foundry module

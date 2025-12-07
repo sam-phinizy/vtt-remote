@@ -1,21 +1,40 @@
 /**
  * VTT Remote - Phone Client Application
  * Vanilla JS WebSocket client for token control
+ *
+ * Protocol: JOIN → PAIR → MOVE (per docs/protocol.md)
  */
 
 (function () {
   'use strict';
 
-  // Configuration
+  // ==========================================================================
+  // CONFIGURATION
+  // ==========================================================================
+
   const MOVE_THROTTLE_MS = 150; // Max 1 move per 150ms per PRD
+  const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+  const HAPTIC_DURATION = 10; // ms
 
-  // State
+  // ==========================================================================
+  // STATE
+  // ==========================================================================
+
   let socket = null;
+  let roomCode = null;
+  let tokenId = null;
+  let tokenName = null;
   let isConnected = false;
+  let isPaired = false;
   let lastMoveTime = 0;
-  let sessionData = null;
+  let reconnectAttempts = 0;
+  let reconnectTimeout = null;
+  let pendingPairingCode = null;
 
-  // DOM Elements
+  // ==========================================================================
+  // DOM ELEMENTS
+  // ==========================================================================
+
   const pairingScreen = document.getElementById('pairing-screen');
   const controlScreen = document.getElementById('control-screen');
   const pairingForm = document.getElementById('pairing-form');
@@ -23,19 +42,21 @@
   const pairingCodeInput = document.getElementById('pairing-code');
   const connectBtn = document.getElementById('connect-btn');
   const statusMessage = document.getElementById('status-message');
-  const actorName = document.getElementById('actor-name');
+  const actorNameEl = document.getElementById('actor-name');
   const disconnectBtn = document.getElementById('disconnect-btn');
   const connectionStatus = document.getElementById('connection-status');
   const dpadButtons = document.querySelectorAll('.dpad-btn');
 
-  /**
-   * Initialize the application.
-   */
+  // ==========================================================================
+  // INITIALIZATION
+  // ==========================================================================
+
   function init() {
+    // Event listeners
     pairingForm.addEventListener('submit', handlePairingSubmit);
     disconnectBtn.addEventListener('click', disconnect);
 
-    // Set up D-pad controls
+    // D-pad controls with haptic feedback
     dpadButtons.forEach((btn) => {
       btn.addEventListener('click', () => handleMove(btn.dataset.dir));
       btn.addEventListener('touchstart', (e) => {
@@ -44,42 +65,84 @@
       });
     });
 
-    // Restore last used room code from localStorage
+    // Keyboard support for D-pad
+    document.addEventListener('keydown', handleKeyboard);
+
+    // Restore room code from localStorage
     const savedRoomCode = localStorage.getItem('vtt-remote-room');
     if (savedRoomCode) {
       roomCodeInput.value = savedRoomCode;
     }
+
+    // Parse URL params (from QR code scan)
+    parseUrlParams();
   }
 
-  /**
-   * Handle pairing form submission.
-   * @param {Event} e - Form submit event
-   */
+  // ==========================================================================
+  // URL PARAMETER PARSING (for QR code)
+  // ==========================================================================
+
+  function parseUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const urlRoom = params.get('room');
+    const urlCode = params.get('code');
+
+    if (urlRoom) {
+      roomCodeInput.value = urlRoom.toUpperCase();
+    }
+
+    if (urlCode) {
+      pairingCodeInput.value = urlCode;
+    }
+
+    // Auto-connect if both params present
+    if (urlRoom && urlCode) {
+      // Clear URL params to prevent re-connect on refresh
+      window.history.replaceState({}, '', window.location.pathname);
+
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        handlePairingSubmit(new Event('submit'));
+      }, 100);
+    }
+  }
+
+  // ==========================================================================
+  // PAIRING FLOW
+  // ==========================================================================
+
   function handlePairingSubmit(e) {
     e.preventDefault();
 
-    const roomCode = roomCodeInput.value.trim().toUpperCase();
+    roomCode = roomCodeInput.value.trim().toUpperCase();
     const pairingCode = pairingCodeInput.value.trim();
 
     if (!roomCode || !pairingCode) {
-      showStatus('Please enter both codes', 'error');
+      showToast('Please enter both codes', 'error');
       return;
     }
 
     // Save room code for next time
     localStorage.setItem('vtt-remote-room', roomCode);
 
-    connect(roomCode, pairingCode);
+    // Store pairing code for after JOIN completes
+    pendingPairingCode = pairingCode;
+
+    // Start connection
+    connect();
   }
 
-  /**
-   * Connect to the relay server and attempt pairing.
-   * @param {string} roomCode - The room identifier
-   * @param {string} pairingCode - The 4-digit pairing code
-   */
-  function connect(roomCode, pairingCode) {
-    connectBtn.disabled = true;
-    showStatus('Connecting...', '');
+  // ==========================================================================
+  // WEBSOCKET CONNECTION
+  // ==========================================================================
+
+  function connect() {
+    if (socket?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    setConnecting(true);
+    showToast('Connecting...', '');
 
     // Determine WebSocket URL (same host, /ws path)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -87,153 +150,252 @@
 
     socket = new WebSocket(wsUrl);
 
-    socket.onopen = () => {
-      showStatus('Connected, pairing...', '');
-
-      // Send pairing request
-      sendMessage({
-        type: 'PAIR',
-        room: roomCode,
-        code: pairingCode,
-      });
-    };
-
-    socket.onmessage = (event) => {
-      handleMessage(JSON.parse(event.data));
-    };
-
-    socket.onclose = () => {
-      isConnected = false;
-      connectBtn.disabled = false;
-
-      if (sessionData) {
-        // Was connected, show reconnecting
-        connectionStatus.textContent = 'Disconnected';
-        connectionStatus.className = 'disconnected';
-        // TODO: Implement auto-reconnect
-      }
-    };
-
-    socket.onerror = () => {
-      showStatus('Connection failed', 'error');
-      connectBtn.disabled = false;
-    };
+    socket.onopen = handleSocketOpen;
+    socket.onmessage = handleSocketMessage;
+    socket.onclose = handleSocketClose;
+    socket.onerror = handleSocketError;
   }
 
-  /**
-   * Handle incoming WebSocket message.
-   * @param {Object} message - Parsed message object
-   */
-  function handleMessage(message) {
-    switch (message.type) {
+  function handleSocketOpen() {
+    reconnectAttempts = 0; // Reset on successful connection
+    showToast('Connected, joining room...', '');
+
+    // Step 1: Send JOIN message
+    sendMessage('JOIN', { room: roomCode });
+  }
+
+  function handleSocketMessage(event) {
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      console.warn('Invalid message:', event.data);
+      return;
+    }
+
+    // Handle envelope format: { type, payload }
+    const type = msg.type;
+    const payload = msg.payload || {};
+
+    switch (type) {
       case 'PAIR_SUCCESS':
-        handlePairSuccess(message);
+        handlePairSuccess(payload);
         break;
+
       case 'PAIR_FAILED':
-        showStatus(message.reason || 'Pairing failed', 'error');
-        connectBtn.disabled = false;
+        handlePairFailed(payload);
         break;
+
       case 'MOVE_ACK':
-        // Optional: visual feedback that move was received
+        // Optional: visual feedback that move was applied
         break;
+
       default:
-        console.log('Unknown message type:', message.type);
+        // Ignore other message types (JOIN echo, etc.)
+        break;
     }
   }
 
-  /**
-   * Handle successful pairing.
-   * @param {Object} message - Pairing success message with actor data
-   */
-  function handlePairSuccess(message) {
+  function handleSocketClose() {
+    isConnected = false;
+
+    if (isPaired) {
+      // Was paired, try to reconnect
+      updateConnectionStatus('disconnected');
+      scheduleReconnect();
+    } else {
+      // Connection failed during pairing
+      setConnecting(false);
+    }
+  }
+
+  function handleSocketError() {
+    showToast('Connection failed', 'error');
+    setConnecting(false);
+  }
+
+  // ==========================================================================
+  // RECONNECTION LOGIC
+  // ==========================================================================
+
+  function scheduleReconnect() {
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+    reconnectAttempts++;
+
+    showToast(`Reconnecting in ${Math.round(delay / 1000)}s...`, '');
+
+    reconnectTimeout = setTimeout(() => {
+      if (isPaired) {
+        // Re-pair after reconnect
+        pendingPairingCode = null; // Already paired, just rejoin
+        connect();
+      }
+    }, delay);
+  }
+
+  function cancelReconnect() {
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    reconnectAttempts = 0;
+  }
+
+  // ==========================================================================
+  // MESSAGE HANDLERS
+  // ==========================================================================
+
+  function handlePairSuccess(payload) {
+    isPaired = true;
     isConnected = true;
-    sessionData = message;
+    tokenId = payload.tokenId;
+    tokenName = payload.tokenName || 'Token';
 
     // Update UI
-    actorName.textContent = message.actorName || 'Token';
-    connectionStatus.textContent = 'Connected';
-    connectionStatus.className = 'connected';
+    actorNameEl.textContent = tokenName;
+    updateConnectionStatus('connected');
+    setConnecting(false);
 
     // Switch to control screen
     showScreen('control');
+    showToast(`Paired with ${tokenName}`, 'success');
+
+    // Haptic feedback for successful pairing
+    hapticFeedback(50);
   }
 
-  /**
-   * Handle D-pad movement.
-   * @param {string} direction - 'up', 'down', 'left', 'right'
-   */
+  function handlePairFailed(payload) {
+    showToast(payload.reason || 'Pairing failed', 'error');
+    setConnecting(false);
+    pendingPairingCode = null;
+  }
+
+  // ==========================================================================
+  // MOVEMENT
+  // ==========================================================================
+
   function handleMove(direction) {
-    if (!isConnected || !socket) return;
+    if (!isPaired || !socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     // Throttle moves
     const now = Date.now();
-    if (now - lastMoveTime < MOVE_THROTTLE_MS) return;
+    if (now - lastMoveTime < MOVE_THROTTLE_MS) {
+      return;
+    }
     lastMoveTime = now;
 
-    // Calculate delta based on direction
-    const deltas = {
-      up: { dx: 0, dy: -1 },
-      down: { dx: 0, dy: 1 },
-      left: { dx: -1, dy: 0 },
-      right: { dx: 1, dy: 0 },
-    };
+    // Haptic feedback
+    hapticFeedback(HAPTIC_DURATION);
 
-    const { dx, dy } = deltas[direction] || { dx: 0, dy: 0 };
-
-    sendMessage({
-      type: 'MOVE',
-      dx,
-      dy,
+    // Send MOVE with direction and tokenId (per protocol)
+    sendMessage('MOVE', {
+      direction: direction,
+      tokenId: tokenId,
     });
   }
 
-  /**
-   * Disconnect from the server.
-   */
+  function handleKeyboard(e) {
+    // Only handle arrow keys when on control screen
+    if (!isPaired) return;
+
+    const keyMap = {
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      ArrowLeft: 'left',
+      ArrowRight: 'right',
+    };
+
+    const direction = keyMap[e.key];
+    if (direction) {
+      e.preventDefault();
+      handleMove(direction);
+    }
+  }
+
+  // ==========================================================================
+  // DISCONNECT
+  // ==========================================================================
+
   function disconnect() {
+    cancelReconnect();
+
     if (socket) {
       socket.close();
       socket = null;
     }
 
     isConnected = false;
-    sessionData = null;
+    isPaired = false;
+    tokenId = null;
+    tokenName = null;
+    pendingPairingCode = null;
     pairingCodeInput.value = '';
 
     showScreen('pairing');
-    showStatus('', '');
+    showToast('', '');
   }
 
-  /**
-   * Send a message through the WebSocket.
-   * @param {Object} data - Message data to send
-   */
-  function sendMessage(data) {
+  // ==========================================================================
+  // MESSAGE SENDING
+  // ==========================================================================
+
+  function sendMessage(type, payload) {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(data));
+      const msg = JSON.stringify({ type, payload });
+      socket.send(msg);
+
+      // After JOIN, send PAIR if we have a pending code
+      if (type === 'JOIN' && pendingPairingCode) {
+        // Small delay to ensure server processes JOIN first
+        setTimeout(() => {
+          sendMessage('PAIR', { code: pendingPairingCode });
+          pendingPairingCode = null;
+          showToast('Pairing...', '');
+        }, 50);
+      }
     }
   }
 
-  /**
-   * Show a status message on the pairing screen.
-   * @param {string} text - Message text
-   * @param {string} type - 'error', 'success', or ''
-   */
-  function showStatus(text, type) {
+  // ==========================================================================
+  // UI HELPERS
+  // ==========================================================================
+
+  function showToast(text, type) {
     statusMessage.textContent = text;
     statusMessage.className = `status ${type}`;
   }
 
-  /**
-   * Switch between screens.
-   * @param {string} screen - 'pairing' or 'control'
-   */
   function showScreen(screen) {
     pairingScreen.classList.toggle('active', screen === 'pairing');
     controlScreen.classList.toggle('active', screen === 'control');
   }
 
-  // Initialize on DOM ready
+  function setConnecting(connecting) {
+    connectBtn.disabled = connecting;
+    connectBtn.textContent = connecting ? 'Connecting...' : 'Connect';
+  }
+
+  function updateConnectionStatus(status) {
+    connectionStatus.textContent = status === 'connected' ? 'Connected' : 'Disconnected';
+    connectionStatus.className = status;
+  }
+
+  function hapticFeedback(duration) {
+    if (navigator.vibrate) {
+      navigator.vibrate(duration);
+    }
+  }
+
+  // ==========================================================================
+  // STARTUP
+  // ==========================================================================
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
