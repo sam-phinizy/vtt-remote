@@ -13,6 +13,7 @@ declare const canvas: any;
 declare const ui: any;
 declare const Hooks: any;
 declare const Dialog: any;
+declare const Roll: any;
 declare function $(selector: any): any;
 
 import {
@@ -23,6 +24,7 @@ import {
   isPairPayload,
   isMovePayload,
   isUseAbilityPayload,
+  isRollDicePayload,
   type PairingSession,
   // Pairing
   createSession,
@@ -228,6 +230,9 @@ function handleMessage(data: string): void {
     case 'useAbility':
       handleUseAbility(payload);
       break;
+    case 'rollDice':
+      handleRollDice(payload);
+      break;
     default:
       // Ignore other message types (they're for the phone client)
       break;
@@ -409,6 +414,97 @@ async function handleUseAbility(payload: unknown): Promise<void> {
       message: `Failed to use ${item.name}`,
     });
   }
+}
+
+async function handleRollDice(payload: unknown): Promise<void> {
+  if (!isRollDicePayload(payload)) {
+    console.warn(`${MODULE_ID} | Invalid ROLL_DICE payload:`, payload);
+    return;
+  }
+
+  // Find the session for this token
+  const session = findSessionByToken(pairingSessions, payload.tokenId, Date.now());
+  if (!session) {
+    console.warn(`${MODULE_ID} | No active session for token: ${payload.tokenId}`);
+    sendMessage('ROLL_DICE_RESULT', {
+      tokenId: payload.tokenId,
+      formula: payload.formula,
+      success: false,
+      actorName: 'Unknown',
+      postedToChat: false,
+      error: 'Session expired. Please re-pair.',
+    });
+    return;
+  }
+
+  // Get scene and token from Foundry
+  const scene = game.scenes?.get(session.sceneId);
+  const token = scene?.tokens?.get(payload.tokenId);
+  const actor = token?.actor;
+  const actorName = actor?.name ?? token?.name ?? 'Unknown';
+
+  try {
+    // Create and evaluate the roll using Foundry's Roll API
+    const roll = new Roll(payload.formula);
+    await roll.evaluate();
+
+    // Build breakdown string from dice terms
+    const breakdown = formatRollBreakdown(roll);
+
+    // Optionally post to chat
+    if (payload.postToChat) {
+      await roll.toMessage({
+        speaker: { alias: actorName },
+        flavor: payload.label ?? `Dice Roll`,
+      });
+    }
+
+    console.log(`${MODULE_ID} | Roll result: ${payload.formula} = ${roll.total}`);
+
+    sendMessage('ROLL_DICE_RESULT', {
+      tokenId: payload.tokenId,
+      formula: payload.formula,
+      success: true,
+      total: roll.total,
+      breakdown,
+      actorName,
+      postedToChat: payload.postToChat,
+    });
+  } catch (err) {
+    console.error(`${MODULE_ID} | Error rolling dice:`, err);
+    sendMessage('ROLL_DICE_RESULT', {
+      tokenId: payload.tokenId,
+      formula: payload.formula,
+      success: false,
+      actorName,
+      postedToChat: false,
+      error: `Invalid formula: ${payload.formula}`,
+    });
+  }
+}
+
+/**
+ * Format a roll's breakdown string showing individual dice results.
+ * Example: "2d6+3" rolled [4, 2] → "[4, 2] + 3 = 9"
+ */
+function formatRollBreakdown(roll: any): string {
+  const parts: string[] = [];
+
+  for (const term of roll.terms ?? []) {
+    if (term.results) {
+      // Dice term - show individual results
+      const results = term.results.map((r: any) => r.result);
+      parts.push(`[${results.join(', ')}]`);
+    } else if (term.operator) {
+      // Operator term (+, -, etc.)
+      parts.push(term.operator);
+    } else if (typeof term.number === 'number') {
+      // Numeric modifier
+      parts.push(String(term.number));
+    }
+  }
+
+  return `${parts.join(' ')} = ${roll.total}`;
 }
 
 // =============================================================================

@@ -51,7 +51,18 @@
   // Tab elements
   const tabButtons = document.querySelectorAll('.screen-tabs .tab');
   const dpadContent = document.getElementById('dpad-content');
+  const diceContent = document.getElementById('dice-content');
   const infoContent = document.getElementById('info-content');
+
+  // Dice elements
+  const diceButtons = document.querySelectorAll('.dice-btn');
+  const diceFormulaInput = document.getElementById('dice-formula');
+  const rollCustomBtn = document.getElementById('roll-custom-btn');
+  const postToChatCheckbox = document.getElementById('post-to-chat');
+  const diceResultEl = document.getElementById('dice-result');
+  const diceTotalEl = document.getElementById('dice-total');
+  const diceBreakdownEl = document.getElementById('dice-breakdown');
+  const diceFormulaDisplayEl = document.getElementById('dice-formula-display');
 
   // Info panel elements
   const actorPortrait = document.getElementById('actor-portrait');
@@ -92,6 +103,26 @@
     // Tab switching
     tabButtons.forEach((btn) => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // Dice quick buttons
+    diceButtons.forEach((btn) => {
+      btn.addEventListener('click', () => rollDice(btn.dataset.formula));
+    });
+
+    // Custom dice roll
+    rollCustomBtn.addEventListener('click', () => {
+      const formula = diceFormulaInput.value.trim();
+      if (formula) rollDice(formula);
+    });
+
+    // Enter key on dice formula input
+    diceFormulaInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const formula = diceFormulaInput.value.trim();
+        if (formula) rollDice(formula);
+      }
     });
 
     // Keyboard support for D-pad
@@ -238,6 +269,10 @@
 
       case 'USE_ABILITY_RESULT':
         handleUseAbilityResult(payload);
+        break;
+
+      case 'ROLL_DICE_RESULT':
+        handleRollDiceResult(payload);
         break;
 
       default:
@@ -516,6 +551,61 @@
     }
   }
 
+  // ==========================================================================
+  // DICE ROLLING
+  // ==========================================================================
+
+  function rollDice(formula) {
+    if (!isPaired || !socket || socket.readyState !== WebSocket.OPEN) {
+      showToast('Not connected', 'error');
+      return;
+    }
+
+    // Haptic feedback for roll
+    hapticFeedback(15);
+
+    // Hide previous result while waiting
+    diceResultEl.classList.add('hidden');
+
+    // Send ROLL_DICE message
+    sendMessage('ROLL_DICE', {
+      tokenId: tokenId,
+      formula: formula,
+      postToChat: postToChatCheckbox.checked,
+    });
+  }
+
+  function handleRollDiceResult(payload) {
+    // Only show results for our token
+    if (payload.tokenId !== tokenId) return;
+
+    diceResultEl.classList.remove('hidden');
+
+    if (payload.success) {
+      diceResultEl.classList.remove('error');
+      diceTotalEl.textContent = payload.total;
+      diceBreakdownEl.textContent = payload.breakdown || '';
+      diceFormulaDisplayEl.textContent = payload.formula;
+
+      // Strong haptic for successful roll
+      hapticFeedback(30);
+
+      // Quick celebration animation
+      diceResultEl.style.animation = 'none';
+      // Trigger reflow to restart animation
+      void diceResultEl.offsetWidth;
+      diceResultEl.style.animation = 'dice-result-pop 0.3s ease';
+    } else {
+      diceResultEl.classList.add('error');
+      diceTotalEl.textContent = payload.error || 'Error';
+      diceBreakdownEl.textContent = '';
+      diceFormulaDisplayEl.textContent = payload.formula;
+
+      // Error haptic
+      hapticFeedback(100);
+    }
+  }
+
   function switchTab(tabName) {
     // Update tab button states
     tabButtons.forEach((btn) => {
@@ -524,6 +614,7 @@
 
     // Update content visibility
     dpadContent.classList.toggle('active', tabName === 'dpad');
+    diceContent.classList.toggle('active', tabName === 'dice');
     infoContent.classList.toggle('active', tabName === 'info');
 
     // Haptic feedback on tab switch

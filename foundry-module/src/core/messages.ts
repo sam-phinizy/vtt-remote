@@ -15,7 +15,9 @@ export type MessageType =
   | 'ACTOR_INFO'
   | 'ACTOR_UPDATE'
   | 'USE_ABILITY'
-  | 'USE_ABILITY_RESULT';
+  | 'USE_ABILITY_RESULT'
+  | 'ROLL_DICE'
+  | 'ROLL_DICE_RESULT';
 
 export interface Envelope {
   type: MessageType;
@@ -74,6 +76,24 @@ export interface UseAbilityResultPayload {
   message?: string; // Error message or confirmation
 }
 
+export interface RollDicePayload {
+  tokenId: string;
+  formula: string; // e.g., "2d6+3", "1d20"
+  postToChat: boolean;
+  label?: string; // Optional description for the roll
+}
+
+export interface RollDiceResultPayload {
+  tokenId: string;
+  formula: string;
+  success: boolean;
+  total?: number; // Only if success
+  breakdown?: string; // e.g., "[5, 3] + 3 = 11"
+  actorName: string;
+  postedToChat: boolean;
+  error?: string; // Only if !success
+}
+
 export type HandlerType =
   | 'join'
   | 'pair'
@@ -85,6 +105,8 @@ export type HandlerType =
   | 'actorUpdate'
   | 'useAbility'
   | 'useAbilityResult'
+  | 'rollDice'
+  | 'rollDiceResult'
   | 'unknown';
 
 export interface RouteResult {
@@ -133,6 +155,8 @@ export function routeMessage(msg: Envelope): RouteResult {
     ACTOR_UPDATE: 'actorUpdate',
     USE_ABILITY: 'useAbility',
     USE_ABILITY_RESULT: 'useAbilityResult',
+    ROLL_DICE: 'rollDice',
+    ROLL_DICE_RESULT: 'rollDiceResult',
   };
 
   const handler = handlerMap[msg.type] ?? 'unknown';
@@ -188,5 +212,21 @@ export function isUseAbilityPayload(payload: unknown): payload is UseAbilityPayl
     'itemId' in payload &&
     typeof (payload as UseAbilityPayload).tokenId === 'string' &&
     typeof (payload as UseAbilityPayload).itemId === 'string'
+  );
+}
+
+/**
+ * Type guard for RollDicePayload.
+ */
+export function isRollDicePayload(payload: unknown): payload is RollDicePayload {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'tokenId' in payload &&
+    'formula' in payload &&
+    'postToChat' in payload &&
+    typeof (payload as RollDicePayload).tokenId === 'string' &&
+    typeof (payload as RollDicePayload).formula === 'string' &&
+    typeof (payload as RollDicePayload).postToChat === 'boolean'
   );
 }

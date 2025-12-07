@@ -6,6 +6,7 @@ import {
   isPairPayload,
   isMovePayload,
   isJoinPayload,
+  isRollDicePayload,
 } from '../core/messages';
 
 describe('parseMessage', () => {
@@ -24,6 +25,17 @@ describe('parseMessage', () => {
   it('parses valid MOVE message', () => {
     const msg = parseMessage('{"type":"MOVE","payload":{"direction":"up","tokenId":"tok1"}}');
     expect(msg?.type).toBe('MOVE');
+  });
+
+  it('parses valid ROLL_DICE message', () => {
+    const msg = parseMessage('{"type":"ROLL_DICE","payload":{"tokenId":"tok1","formula":"2d6+3","postToChat":true}}');
+    expect(msg?.type).toBe('ROLL_DICE');
+    expect(msg?.payload).toEqual({ tokenId: 'tok1', formula: '2d6+3', postToChat: true });
+  });
+
+  it('parses valid ROLL_DICE_RESULT message', () => {
+    const msg = parseMessage('{"type":"ROLL_DICE_RESULT","payload":{"tokenId":"tok1","formula":"2d6+3","success":true,"total":11,"breakdown":"[5,3]+3","actorName":"Runner","postedToChat":true}}');
+    expect(msg?.type).toBe('ROLL_DICE_RESULT');
   });
 
   it('returns null for invalid JSON', () => {
@@ -63,6 +75,22 @@ describe('buildMessage', () => {
     expect(parsed.type).toBe('PAIR_SUCCESS');
     expect(parsed.payload.tokenName).toBe('Hero');
   });
+
+  it('builds ROLL_DICE_RESULT message', () => {
+    const result = buildMessage('ROLL_DICE_RESULT', {
+      tokenId: 'tok1',
+      formula: '1d20',
+      success: true,
+      total: 17,
+      breakdown: '[17]',
+      actorName: 'Shadowrunner',
+      postedToChat: false,
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.type).toBe('ROLL_DICE_RESULT');
+    expect(parsed.payload.total).toBe(17);
+    expect(parsed.payload.actorName).toBe('Shadowrunner');
+  });
 });
 
 describe('routeMessage', () => {
@@ -84,6 +112,16 @@ describe('routeMessage', () => {
   it('routes PAIR_SUCCESS to pairSuccess handler', () => {
     const result = routeMessage({ type: 'PAIR_SUCCESS', payload: {} });
     expect(result.handler).toBe('pairSuccess');
+  });
+
+  it('routes ROLL_DICE to rollDice handler', () => {
+    const result = routeMessage({ type: 'ROLL_DICE', payload: { tokenId: 'tok1', formula: '1d20', postToChat: true } });
+    expect(result.handler).toBe('rollDice');
+  });
+
+  it('routes ROLL_DICE_RESULT to rollDiceResult handler', () => {
+    const result = routeMessage({ type: 'ROLL_DICE_RESULT', payload: {} });
+    expect(result.handler).toBe('rollDiceResult');
   });
 
   it('routes unknown types to unknown handler', () => {
@@ -138,6 +176,36 @@ describe('type guards', () => {
 
     it('returns false for missing room', () => {
       expect(isJoinPayload({})).toBe(false);
+    });
+  });
+
+  describe('isRollDicePayload', () => {
+    it('returns true for valid payload with all fields', () => {
+      expect(isRollDicePayload({ tokenId: 'tok1', formula: '2d6+3', postToChat: true })).toBe(true);
+    });
+
+    it('returns true for valid payload with optional label', () => {
+      expect(isRollDicePayload({ tokenId: 'tok1', formula: '1d20', postToChat: false, label: 'Attack roll' })).toBe(true);
+    });
+
+    it('returns false for missing tokenId', () => {
+      expect(isRollDicePayload({ formula: '1d20', postToChat: true })).toBe(false);
+    });
+
+    it('returns false for missing formula', () => {
+      expect(isRollDicePayload({ tokenId: 'tok1', postToChat: true })).toBe(false);
+    });
+
+    it('returns false for missing postToChat', () => {
+      expect(isRollDicePayload({ tokenId: 'tok1', formula: '1d20' })).toBe(false);
+    });
+
+    it('returns false for null', () => {
+      expect(isRollDicePayload(null)).toBe(false);
+    });
+
+    it('returns false for non-boolean postToChat', () => {
+      expect(isRollDicePayload({ tokenId: 'tok1', formula: '1d20', postToChat: 'yes' })).toBe(false);
     });
   });
 });

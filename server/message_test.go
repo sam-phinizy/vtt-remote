@@ -25,6 +25,18 @@ func TestParseEnvelope(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "valid ROLL_DICE message",
+			input:    `{"type":"ROLL_DICE","payload":{"tokenId":"abc123","formula":"2d6+3","postToChat":true}}`,
+			wantType: TypeRollDice,
+			wantErr:  false,
+		},
+		{
+			name:     "valid ROLL_DICE_RESULT message",
+			input:    `{"type":"ROLL_DICE_RESULT","payload":{"tokenId":"abc123","formula":"2d6+3","success":true,"total":11,"breakdown":"[5,3]+3","actorName":"Shadowrunner","postedToChat":true}}`,
+			wantType: TypeRollDiceResult,
+			wantErr:  false,
+		},
+		{
 			name:    "invalid JSON",
 			input:   `{not valid json}`,
 			wantErr: true,

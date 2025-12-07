@@ -60,6 +60,7 @@
       <!-- Tab Navigation -->
       <nav class="screen-tabs">
         <button class="tab active" data-tab="dpad">D-Pad</button>
+        <button class="tab" data-tab="dice">Dice</button>
         <button class="tab" data-tab="info">Info</button>
       </nav>
 
@@ -70,6 +71,42 @@
           <button class="dpad-btn" data-dir="left" aria-label="Move Left">◀</button>
           <button class="dpad-btn" data-dir="right" aria-label="Move Right">▶</button>
           <button class="dpad-btn" data-dir="down" aria-label="Move Down">▼</button>
+        </div>
+      </div>
+
+      <!-- Dice Tab Content -->
+      <div id="dice-content" class="tab-content">
+        <div class="dice-quick-buttons">
+          <button class="dice-btn" data-formula="1d4">d4</button>
+          <button class="dice-btn" data-formula="1d6">d6</button>
+          <button class="dice-btn" data-formula="1d8">d8</button>
+          <button class="dice-btn" data-formula="1d10">d10</button>
+          <button class="dice-btn" data-formula="1d12">d12</button>
+          <button class="dice-btn" data-formula="1d20">d20</button>
+        </div>
+
+        <div class="dice-custom">
+          <input
+            type="text"
+            id="dice-formula"
+            placeholder="e.g., 2d6+3"
+            autocomplete="off"
+            autocapitalize="off"
+          >
+          <button id="roll-custom-btn" class="dice-roll-btn">Roll</button>
+        </div>
+
+        <div class="dice-options">
+          <label class="toggle-label">
+            <input type="checkbox" id="post-to-chat" checked>
+            <span>Post to Foundry chat</span>
+          </label>
+        </div>
+
+        <div id="dice-result" class="dice-result hidden">
+          <div class="dice-result-total" id="dice-total"></div>
+          <div class="dice-result-breakdown" id="dice-breakdown"></div>
+          <div class="dice-result-formula" id="dice-formula-display"></div>
         </div>
       </div>
 

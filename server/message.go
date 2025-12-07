@@ -6,12 +6,14 @@ import "encoding/json"
 type MessageType string
 
 const (
-	TypeJoin        MessageType = "JOIN"
-	TypePair        MessageType = "PAIR"
-	TypePairSuccess MessageType = "PAIR_SUCCESS"
-	TypePairFailed  MessageType = "PAIR_FAILED"
-	TypeMove        MessageType = "MOVE"
-	TypeMoveAck     MessageType = "MOVE_ACK"
+	TypeJoin           MessageType = "JOIN"
+	TypePair           MessageType = "PAIR"
+	TypePairSuccess    MessageType = "PAIR_SUCCESS"
+	TypePairFailed     MessageType = "PAIR_FAILED"
+	TypeMove           MessageType = "MOVE"
+	TypeMoveAck        MessageType = "MOVE_ACK"
+	TypeRollDice       MessageType = "ROLL_DICE"
+	TypeRollDiceResult MessageType = "ROLL_DICE_RESULT"
 )
 
 // Envelope is the outer wrapper for all messages.
