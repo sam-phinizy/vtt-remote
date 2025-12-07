@@ -25,6 +25,30 @@ export interface Stat {
 }
 
 /**
+ * Ability category for organizing abilities in the UI.
+ */
+export type AbilityCategory = 'spell' | 'feature' | 'weapon' | 'consumable' | 'other';
+
+/**
+ * A usable ability (spell, feature, item, etc.).
+ */
+export interface Ability {
+  id: string; // Item ID in Foundry
+  name: string;
+  category: AbilityCategory;
+  img?: string; // Icon URL
+  uses?: {
+    current: number;
+    max: number;
+  };
+  // Spell-specific
+  spellLevel?: number;
+  prepared?: boolean;
+  // Description snippet for UI
+  description?: string;
+}
+
+/**
  * Normalized actor data for the phone info panel.
  * System adapters transform system-specific actor data into this format.
  */
@@ -35,6 +59,7 @@ export interface ActorPanelData {
   resources: Resource[];
   stats: Stat[];
   conditions: string[];
+  abilities: Ability[];
 }
 
 /**

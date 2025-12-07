@@ -22,6 +22,7 @@ import {
   routeMessage,
   isPairPayload,
   isMovePayload,
+  isUseAbilityPayload,
   type PairingSession,
   // Pairing
   createSession,
@@ -224,6 +225,9 @@ function handleMessage(data: string): void {
     case 'move':
       handleMoveCommand(payload);
       break;
+    case 'useAbility':
+      handleUseAbility(payload);
+      break;
     default:
       // Ignore other message types (they're for the phone client)
       break;
@@ -254,9 +258,14 @@ function handlePairRequest(payload: unknown): void {
     });
 
     // Send initial actor info for the info panel
+    console.log(`${MODULE_ID} | About to get actor panel data for token: ${session.tokenId}`);
     const actorData = getActorPanelData(session.tokenId, session.sceneId);
+    console.log(`${MODULE_ID} | Got actor data:`, actorData);
     if (actorData) {
       sendMessage('ACTOR_INFO', actorData);
+      console.log(`${MODULE_ID} | Sent ACTOR_INFO message`);
+    } else {
+      console.warn(`${MODULE_ID} | No actor data returned!`);
     }
 
     console.log(`${MODULE_ID} | Pairing successful for token: ${token?.name}`);
@@ -323,6 +332,85 @@ async function handleMoveCommand(payload: unknown): Promise<void> {
   });
 }
 
+async function handleUseAbility(payload: unknown): Promise<void> {
+  if (!isUseAbilityPayload(payload)) {
+    console.warn(`${MODULE_ID} | Invalid USE_ABILITY payload:`, payload);
+    return;
+  }
+
+  // Find the session for this token
+  const session = findSessionByToken(pairingSessions, payload.tokenId, Date.now());
+  if (!session) {
+    console.warn(`${MODULE_ID} | No active session for token: ${payload.tokenId}`);
+    sendMessage('USE_ABILITY_RESULT', {
+      tokenId: payload.tokenId,
+      itemId: payload.itemId,
+      success: false,
+      message: 'Session expired. Please re-pair.',
+    });
+    return;
+  }
+
+  // Get scene and token from Foundry
+  const scene = game.scenes?.get(session.sceneId);
+  const token = scene?.tokens?.get(payload.tokenId);
+  const actor = token?.actor;
+
+  if (!actor) {
+    console.warn(`${MODULE_ID} | Actor not found for token: ${payload.tokenId}`);
+    sendMessage('USE_ABILITY_RESULT', {
+      tokenId: payload.tokenId,
+      itemId: payload.itemId,
+      success: false,
+      message: 'Actor not found.',
+    });
+    return;
+  }
+
+  // Find the item on the actor
+  const item = actor.items?.get(payload.itemId);
+  if (!item) {
+    console.warn(`${MODULE_ID} | Item not found: ${payload.itemId}`);
+    sendMessage('USE_ABILITY_RESULT', {
+      tokenId: payload.tokenId,
+      itemId: payload.itemId,
+      success: false,
+      message: 'Ability not found.',
+    });
+    return;
+  }
+
+  try {
+    // Use the item - this triggers rolls, chat messages, etc.
+    console.log(`${MODULE_ID} | Using item: ${item.name}`);
+    await item.use({ configureDialog: false });
+
+    sendMessage('USE_ABILITY_RESULT', {
+      tokenId: payload.tokenId,
+      itemId: payload.itemId,
+      success: true,
+      message: `Used ${item.name}`,
+    });
+
+    // Send updated actor data (uses may have changed)
+    const actorData = getActorPanelData(payload.tokenId, session.sceneId);
+    if (actorData) {
+      sendMessage('ACTOR_UPDATE', {
+        tokenId: payload.tokenId,
+        changes: actorData,
+      });
+    }
+  } catch (err) {
+    console.error(`${MODULE_ID} | Error using item:`, err);
+    sendMessage('USE_ABILITY_RESULT', {
+      tokenId: payload.tokenId,
+      itemId: payload.itemId,
+      success: false,
+      message: `Failed to use ${item.name}`,
+    });
+  }
+}
+
 // =============================================================================
 // ACTOR INFO PANEL (Shell)
 // =============================================================================
@@ -331,11 +419,15 @@ async function handleMoveCommand(payload: unknown): Promise<void> {
  * Get normalized actor panel data using the system adapter.
  */
 function getActorPanelData(tokenId: string, sceneId?: string): ActorPanelData | null {
+  console.log(`${MODULE_ID} | Getting actor panel data for token: ${tokenId}, scene: ${sceneId}`);
+  console.log(`${MODULE_ID} | Current system ID: ${game.system?.id}`);
+
   const adapter = getAdapter();
   if (!adapter) {
     console.warn(`${MODULE_ID} | No adapter for system: ${game.system?.id}`);
     return null;
   }
+  console.log(`${MODULE_ID} | Found adapter: ${adapter.systemId}`);
 
   // Find the token - check specific scene or search all scenes
   let token: any = null;
@@ -362,7 +454,9 @@ function getActorPanelData(tokenId: string, sceneId?: string): ActorPanelData | 
   }
 
   try {
-    return adapter.extractActorData(actor, token);
+    const data = adapter.extractActorData(actor, token);
+    console.log(`${MODULE_ID} | Extracted actor data:`, data);
+    return data;
   } catch (err) {
     console.error(`${MODULE_ID} | Error extracting actor data:`, err);
     return null;

@@ -3,9 +3,23 @@
  * Extracts actor data from the dnd5e system for the phone info panel.
  */
 
-import type { ActorPanelData, Resource, Stat, SystemAdapter } from './types';
+import type { Ability, AbilityCategory, ActorPanelData, Resource, Stat, SystemAdapter } from './types';
 
 // Type definitions for dnd5e actor structure (simplified)
+interface Dnd5eItem {
+  id: string;
+  name: string;
+  img?: string;
+  type: string;
+  system: {
+    description?: { value?: string };
+    uses?: { value: number; max: number; per?: string };
+    preparation?: { prepared?: boolean; mode?: string };
+    activation?: { type?: string };
+    level?: number;
+  };
+}
+
 interface Dnd5eActor {
   name: string;
   img?: string;
@@ -22,7 +36,7 @@ interface Dnd5eActor {
     };
     spells?: Record<string, { value: number; max: number }>;
   };
-  items: Array<{ type: string; name: string }>;
+  items: Dnd5eItem[] & { contents?: Dnd5eItem[] };
 }
 
 interface Dnd5eToken {
@@ -62,6 +76,127 @@ function extractSpellSlots(spells: Record<string, { value: number; max: number }
 function getPrimaryClass(items: Array<{ type: string; name: string }>): string {
   const classItem = items.find((i) => i.type === 'class');
   return classItem?.name ?? '';
+}
+
+/**
+ * Map D&D 5e item type to ability category.
+ */
+function getAbilityCategory(itemType: string): AbilityCategory {
+  switch (itemType) {
+    case 'spell':
+      return 'spell';
+    case 'feat':
+      return 'feature';
+    case 'weapon':
+      return 'weapon';
+    case 'consumable':
+      return 'consumable';
+    default:
+      return 'other';
+  }
+}
+
+/**
+ * Check if an item is usable (has an activation type or uses).
+ */
+function isUsableItem(item: Dnd5eItem): boolean {
+  // Skip items without system data
+  if (!item.system) return false;
+
+  // Items with activation types
+  const activationType = item.system.activation?.type;
+  if (activationType && activationType !== 'none' && activationType !== '') {
+    return true;
+  }
+  // Items with limited uses
+  if (item.system.uses?.max && item.system.uses.max > 0) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a spell is prepared/available.
+ */
+function isSpellPrepared(item: Dnd5eItem): boolean {
+  const prep = item.system.preparation;
+  if (!prep) return true; // No preparation needed
+  // Always prepared spells (innate, pact, atwill)
+  if (prep.mode === 'always' || prep.mode === 'innate' || prep.mode === 'pact' || prep.mode === 'atwill') {
+    return true;
+  }
+  // Standard prepared spells
+  return prep.prepared === true;
+}
+
+/**
+ * Extract a short description snippet from HTML.
+ */
+function extractDescriptionSnippet(html?: string, maxLength = 100): string | undefined {
+  if (!html) return undefined;
+  // Strip HTML tags and get plain text
+  const text = html.replace(/<[^>]*>/g, '').trim();
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + '...';
+}
+
+/**
+ * Extract usable abilities from actor items.
+ */
+function extractAbilities(items: Dnd5eItem[]): Ability[] {
+  const abilities: Ability[] = [];
+
+  for (const item of items) {
+    // Skip non-usable items
+    if (!isUsableItem(item)) continue;
+
+    // Skip class, background, race items (not usable directly)
+    if (['class', 'background', 'race', 'subclass'].includes(item.type)) continue;
+
+    // For spells, skip unprepared ones
+    if (item.type === 'spell' && !isSpellPrepared(item)) continue;
+
+    const ability: Ability = {
+      id: item.id,
+      name: item.name,
+      category: getAbilityCategory(item.type),
+      img: item.img,
+    };
+
+    // Add uses if present
+    if (item.system.uses?.max && item.system.uses.max > 0) {
+      ability.uses = {
+        current: item.system.uses.value ?? 0,
+        max: item.system.uses.max,
+      };
+    }
+
+    // Spell-specific data
+    if (item.type === 'spell') {
+      ability.spellLevel = item.system.level ?? 0;
+      ability.prepared = isSpellPrepared(item);
+    }
+
+    // Add description snippet
+    ability.description = extractDescriptionSnippet(item.system.description?.value);
+
+    abilities.push(ability);
+  }
+
+  // Sort by category, then by name
+  const categoryOrder: AbilityCategory[] = ['weapon', 'spell', 'feature', 'consumable', 'other'];
+  abilities.sort((a, b) => {
+    const catDiff = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+    if (catDiff !== 0) return catDiff;
+    // Within spells, sort by level
+    if (a.category === 'spell' && b.category === 'spell') {
+      const levelDiff = (a.spellLevel ?? 0) - (b.spellLevel ?? 0);
+      if (levelDiff !== 0) return levelDiff;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return abilities;
 }
 
 export const dnd5eAdapter: SystemAdapter = {
@@ -125,6 +260,9 @@ export const dnd5eAdapter: SystemAdapter = {
       }
     }
 
+    // Extract usable abilities
+    const abilities = extractAbilities(a.items as unknown as Dnd5eItem[]);
+
     return {
       tokenId: t.id,
       name: t.name,
@@ -132,6 +270,7 @@ export const dnd5eAdapter: SystemAdapter = {
       resources,
       stats,
       conditions,
+      abilities,
     };
   },
 };

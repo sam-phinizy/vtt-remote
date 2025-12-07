@@ -91,7 +91,23 @@
           <!-- Dynamically populated -->
         </div>
 
+        <div class="abilities" id="abilities-container">
+          <!-- Dynamically populated: weapons, spells, features, consumables -->
+        </div>
+
         <p id="no-info-message" class="notes">No actor info available</p>
+      </div>
+
+      <!-- Confirm Ability Dialog -->
+      <div id="confirm-dialog" class="confirm-dialog hidden">
+        <div class="confirm-dialog-content">
+          <h3 id="confirm-title">Use Ability?</h3>
+          <p id="confirm-description"></p>
+          <div class="confirm-buttons">
+            <button id="confirm-cancel" class="confirm-btn cancel">Cancel</button>
+            <button id="confirm-use" class="confirm-btn use">Use</button>
+          </div>
+        </div>
       </div>
 
       <footer>

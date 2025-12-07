@@ -58,7 +58,18 @@
   const resourcesContainer = document.getElementById('resources-container');
   const statsContainer = document.getElementById('stats-container');
   const conditionsContainer = document.getElementById('conditions-container');
+  const abilitiesContainer = document.getElementById('abilities-container');
   const noInfoMessage = document.getElementById('no-info-message');
+
+  // Confirm dialog elements
+  const confirmDialog = document.getElementById('confirm-dialog');
+  const confirmTitle = document.getElementById('confirm-title');
+  const confirmDescription = document.getElementById('confirm-description');
+  const confirmCancelBtn = document.getElementById('confirm-cancel');
+  const confirmUseBtn = document.getElementById('confirm-use');
+
+  // Pending ability use (for confirmation)
+  let pendingAbility = null;
 
   // ==========================================================================
   // INITIALIZATION
@@ -85,6 +96,15 @@
 
     // Keyboard support for D-pad
     document.addEventListener('keydown', handleKeyboard);
+
+    // Confirm dialog buttons
+    confirmCancelBtn.addEventListener('click', hideConfirmDialog);
+    confirmUseBtn.addEventListener('click', confirmUseAbility);
+
+    // Close dialog on backdrop click
+    confirmDialog.addEventListener('click', (e) => {
+      if (e.target === confirmDialog) hideConfirmDialog();
+    });
 
     // Restore room code from localStorage
     const savedRoomCode = localStorage.getItem('vtt-remote-room');
@@ -216,6 +236,10 @@
         handleActorUpdate(payload);
         break;
 
+      case 'USE_ABILITY_RESULT':
+        handleUseAbilityResult(payload);
+        break;
+
       default:
         // Ignore other message types (JOIN echo, etc.)
         break;
@@ -302,6 +326,7 @@
 
   function handleActorInfo(payload) {
     // Initial actor data received after pairing
+    console.log('VTT Remote | Received ACTOR_INFO:', payload);
     actorData = payload;
     renderInfoPanel();
   }
@@ -324,6 +349,7 @@
       resourcesContainer.innerHTML = '';
       statsContainer.innerHTML = '';
       conditionsContainer.innerHTML = '';
+      abilitiesContainer.innerHTML = '';
       actorPortrait.style.display = 'none';
       return;
     }
@@ -365,6 +391,129 @@
     conditionsContainer.innerHTML = (actorData.conditions || [])
       .map((c) => `<span class="condition-badge">${escapeHtml(c)}</span>`)
       .join('');
+
+    // Abilities organized by category
+    renderAbilities(actorData.abilities || []);
+  }
+
+  function renderAbilities(abilities) {
+    if (!abilities.length) {
+      abilitiesContainer.innerHTML = '';
+      return;
+    }
+
+    // Group by category
+    const grouped = {
+      weapon: [],
+      spell: [],
+      feature: [],
+      consumable: [],
+      other: [],
+    };
+
+    for (const ability of abilities) {
+      const cat = ability.category || 'other';
+      if (grouped[cat]) {
+        grouped[cat].push(ability);
+      } else {
+        grouped.other.push(ability);
+      }
+    }
+
+    const categoryLabels = {
+      weapon: 'Weapons',
+      spell: 'Spells',
+      feature: 'Features',
+      consumable: 'Consumables',
+      other: 'Other',
+    };
+
+    let html = '';
+
+    for (const [category, items] of Object.entries(grouped)) {
+      if (!items.length) continue;
+
+      html += `<div class="ability-category">`;
+      html += `<h4 class="ability-category-header">${categoryLabels[category]}</h4>`;
+      html += `<div class="ability-list">`;
+
+      for (const ability of items) {
+        const usesHtml = ability.uses
+          ? `<span class="ability-uses">${ability.uses.current}/${ability.uses.max}</span>`
+          : '';
+        const levelHtml = ability.spellLevel !== undefined && ability.spellLevel > 0
+          ? `<span class="ability-level">L${ability.spellLevel}</span>`
+          : ability.spellLevel === 0
+          ? `<span class="ability-level">Cantrip</span>`
+          : '';
+        const disabled = ability.uses && ability.uses.current <= 0 ? 'disabled' : '';
+
+        html += `
+          <button class="ability-btn ${disabled}" data-id="${escapeHtml(ability.id)}" ${disabled}>
+            ${ability.img ? `<img src="${escapeHtml(ability.img)}" alt="" class="ability-icon">` : ''}
+            <span class="ability-name">${escapeHtml(ability.name)}</span>
+            ${levelHtml}
+            ${usesHtml}
+          </button>
+        `;
+      }
+
+      html += `</div></div>`;
+    }
+
+    abilitiesContainer.innerHTML = html;
+
+    // Add click handlers to ability buttons
+    abilitiesContainer.querySelectorAll('.ability-btn:not([disabled])').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const abilityId = btn.dataset.id;
+        const ability = abilities.find((a) => a.id === abilityId);
+        if (ability) {
+          showConfirmDialog(ability);
+        }
+      });
+    });
+  }
+
+  // ==========================================================================
+  // ABILITY CONFIRMATION DIALOG
+  // ==========================================================================
+
+  function showConfirmDialog(ability) {
+    pendingAbility = ability;
+    confirmTitle.textContent = `Use ${ability.name}?`;
+    confirmDescription.textContent = ability.description || 'Activate this ability?';
+    confirmDialog.classList.remove('hidden');
+    hapticFeedback(10);
+  }
+
+  function hideConfirmDialog() {
+    confirmDialog.classList.add('hidden');
+    pendingAbility = null;
+  }
+
+  function confirmUseAbility() {
+    if (!pendingAbility || !isPaired || !socket || socket.readyState !== WebSocket.OPEN) {
+      hideConfirmDialog();
+      return;
+    }
+
+    // Send USE_ABILITY message
+    sendMessage('USE_ABILITY', {
+      tokenId: tokenId,
+      itemId: pendingAbility.id,
+    });
+
+    hapticFeedback(20);
+    hideConfirmDialog();
+  }
+
+  function handleUseAbilityResult(payload) {
+    if (payload.success) {
+      showToast(payload.message || 'Ability used!', 'success');
+    } else {
+      showToast(payload.message || 'Failed to use ability', 'error');
+    }
   }
 
   function switchTab(tabName) {

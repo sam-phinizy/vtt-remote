@@ -13,7 +13,9 @@ export type MessageType =
   | 'MOVE'
   | 'MOVE_ACK'
   | 'ACTOR_INFO'
-  | 'ACTOR_UPDATE';
+  | 'ACTOR_UPDATE'
+  | 'USE_ABILITY'
+  | 'USE_ABILITY_RESULT';
 
 export interface Envelope {
   type: MessageType;
@@ -60,6 +62,18 @@ export interface ActorUpdatePayload {
   changes: ActorPanelData; // Full data, client can diff
 }
 
+export interface UseAbilityPayload {
+  tokenId: string;
+  itemId: string; // Foundry item ID
+}
+
+export interface UseAbilityResultPayload {
+  tokenId: string;
+  itemId: string;
+  success: boolean;
+  message?: string; // Error message or confirmation
+}
+
 export type HandlerType =
   | 'join'
   | 'pair'
@@ -69,6 +83,8 @@ export type HandlerType =
   | 'moveAck'
   | 'actorInfo'
   | 'actorUpdate'
+  | 'useAbility'
+  | 'useAbilityResult'
   | 'unknown';
 
 export interface RouteResult {
@@ -115,6 +131,8 @@ export function routeMessage(msg: Envelope): RouteResult {
     MOVE_ACK: 'moveAck',
     ACTOR_INFO: 'actorInfo',
     ACTOR_UPDATE: 'actorUpdate',
+    USE_ABILITY: 'useAbility',
+    USE_ABILITY_RESULT: 'useAbilityResult',
   };
 
   const handler = handlerMap[msg.type] ?? 'unknown';
@@ -156,5 +174,19 @@ export function isJoinPayload(payload: unknown): payload is JoinPayload {
     payload !== null &&
     'room' in payload &&
     typeof (payload as JoinPayload).room === 'string'
+  );
+}
+
+/**
+ * Type guard for UseAbilityPayload.
+ */
+export function isUseAbilityPayload(payload: unknown): payload is UseAbilityPayload {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'tokenId' in payload &&
+    'itemId' in payload &&
+    typeof (payload as UseAbilityPayload).tokenId === 'string' &&
+    typeof (payload as UseAbilityPayload).itemId === 'string'
   );
 }
