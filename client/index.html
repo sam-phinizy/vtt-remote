@@ -57,11 +57,41 @@
         <button id="disconnect-btn" class="icon-btn" title="Disconnect">×</button>
       </header>
 
-      <div id="dpad" class="dpad">
-        <button class="dpad-btn" data-dir="up" aria-label="Move Up">▲</button>
-        <button class="dpad-btn" data-dir="left" aria-label="Move Left">◀</button>
-        <button class="dpad-btn" data-dir="right" aria-label="Move Right">▶</button>
-        <button class="dpad-btn" data-dir="down" aria-label="Move Down">▼</button>
+      <!-- Tab Navigation -->
+      <nav class="screen-tabs">
+        <button class="tab active" data-tab="dpad">D-Pad</button>
+        <button class="tab" data-tab="info">Info</button>
+      </nav>
+
+      <!-- D-Pad Tab Content -->
+      <div id="dpad-content" class="tab-content active">
+        <div id="dpad" class="dpad">
+          <button class="dpad-btn" data-dir="up" aria-label="Move Up">▲</button>
+          <button class="dpad-btn" data-dir="left" aria-label="Move Left">◀</button>
+          <button class="dpad-btn" data-dir="right" aria-label="Move Right">▶</button>
+          <button class="dpad-btn" data-dir="down" aria-label="Move Down">▼</button>
+        </div>
+      </div>
+
+      <!-- Info Tab Content -->
+      <div id="info-content" class="tab-content">
+        <div class="actor-portrait">
+          <img id="actor-portrait" src="" alt="Actor portrait">
+        </div>
+
+        <div class="resources" id="resources-container">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div class="stats" id="stats-container">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div class="conditions" id="conditions-container">
+          <!-- Dynamically populated -->
+        </div>
+
+        <p id="no-info-message" class="notes">No actor info available</p>
       </div>
 
       <footer>

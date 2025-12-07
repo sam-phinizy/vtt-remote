@@ -3,13 +3,17 @@
  * No side effects, fully testable in Node.js.
  */
 
+import type { ActorPanelData } from '../adapters/types';
+
 export type MessageType =
   | 'JOIN'
   | 'PAIR'
   | 'PAIR_SUCCESS'
   | 'PAIR_FAILED'
   | 'MOVE'
-  | 'MOVE_ACK';
+  | 'MOVE_ACK'
+  | 'ACTOR_INFO'
+  | 'ACTOR_UPDATE';
 
 export interface Envelope {
   type: MessageType;
@@ -47,7 +51,25 @@ export interface MoveAckPayload {
   y: number;
 }
 
-export type HandlerType = 'join' | 'pair' | 'pairSuccess' | 'pairFailed' | 'move' | 'moveAck' | 'unknown';
+export interface ActorInfoPayload extends ActorPanelData {
+  // ActorInfoPayload is the full ActorPanelData
+}
+
+export interface ActorUpdatePayload {
+  tokenId: string;
+  changes: ActorPanelData; // Full data, client can diff
+}
+
+export type HandlerType =
+  | 'join'
+  | 'pair'
+  | 'pairSuccess'
+  | 'pairFailed'
+  | 'move'
+  | 'moveAck'
+  | 'actorInfo'
+  | 'actorUpdate'
+  | 'unknown';
 
 export interface RouteResult {
   handler: HandlerType;
@@ -91,6 +113,8 @@ export function routeMessage(msg: Envelope): RouteResult {
     PAIR_FAILED: 'pairFailed',
     MOVE: 'move',
     MOVE_ACK: 'moveAck',
+    ACTOR_INFO: 'actorInfo',
+    ACTOR_UPDATE: 'actorUpdate',
   };
 
   const handler = handlerMap[msg.type] ?? 'unknown';

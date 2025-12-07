@@ -227,6 +227,162 @@ body {
   margin-right: 0.5rem;
 }
 
+/* Tabs */
+.screen-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tab:hover:not(.active) {
+  border-color: var(--color-text-muted);
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Info Panel */
+#info-content {
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.actor-portrait {
+  text-align: center;
+}
+
+.actor-portrait img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid var(--color-primary);
+  object-fit: cover;
+  background: var(--color-surface);
+}
+
+/* Resources (HP bars, spell slots, etc.) */
+.resources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.resource {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.resource label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resource-bar {
+  height: 24px;
+  background: var(--color-surface);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.resource-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 12px;
+}
+
+.resource-text {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* Stats grid */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.stat {
+  background: var(--color-surface);
+  padding: 0.75rem;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid var(--color-border);
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--color-primary);
+}
+
+/* Conditions/Status Effects */
+.conditions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.condition-badge {
+  background: var(--color-primary);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* No info message */
+#no-info-message {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 2rem;
+}
+
 /* Responsive - smaller screens */
 @media (max-height: 500px) {
   .screen {
@@ -240,5 +396,14 @@ body {
 
   .dpad-btn {
     font-size: 2rem;
+  }
+
+  .actor-portrait img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
   }
 }

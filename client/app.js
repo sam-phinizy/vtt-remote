@@ -30,6 +30,7 @@
   let reconnectAttempts = 0;
   let reconnectTimeout = null;
   let pendingPairingCode = null;
+  let actorData = null; // Stores ActorPanelData for info panel
 
   // ==========================================================================
   // DOM ELEMENTS
@@ -47,6 +48,18 @@
   const connectionStatus = document.getElementById('connection-status');
   const dpadButtons = document.querySelectorAll('.dpad-btn');
 
+  // Tab elements
+  const tabButtons = document.querySelectorAll('.screen-tabs .tab');
+  const dpadContent = document.getElementById('dpad-content');
+  const infoContent = document.getElementById('info-content');
+
+  // Info panel elements
+  const actorPortrait = document.getElementById('actor-portrait');
+  const resourcesContainer = document.getElementById('resources-container');
+  const statsContainer = document.getElementById('stats-container');
+  const conditionsContainer = document.getElementById('conditions-container');
+  const noInfoMessage = document.getElementById('no-info-message');
+
   // ==========================================================================
   // INITIALIZATION
   // ==========================================================================
@@ -63,6 +76,11 @@
         e.preventDefault();
         handleMove(btn.dataset.dir);
       });
+    });
+
+    // Tab switching
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
     // Keyboard support for D-pad
@@ -190,6 +208,14 @@
         // Optional: visual feedback that move was applied
         break;
 
+      case 'ACTOR_INFO':
+        handleActorInfo(payload);
+        break;
+
+      case 'ACTOR_UPDATE':
+        handleActorUpdate(payload);
+        break;
+
       default:
         // Ignore other message types (JOIN echo, etc.)
         break;
@@ -274,6 +300,93 @@
     pendingPairingCode = null;
   }
 
+  function handleActorInfo(payload) {
+    // Initial actor data received after pairing
+    actorData = payload;
+    renderInfoPanel();
+  }
+
+  function handleActorUpdate(payload) {
+    // Real-time update - check if it's for our token
+    if (payload.tokenId === tokenId) {
+      actorData = payload.changes;
+      renderInfoPanel();
+    }
+  }
+
+  // ==========================================================================
+  // INFO PANEL
+  // ==========================================================================
+
+  function renderInfoPanel() {
+    if (!actorData) {
+      noInfoMessage.style.display = 'block';
+      resourcesContainer.innerHTML = '';
+      statsContainer.innerHTML = '';
+      conditionsContainer.innerHTML = '';
+      actorPortrait.style.display = 'none';
+      return;
+    }
+
+    noInfoMessage.style.display = 'none';
+
+    // Portrait
+    if (actorData.portrait) {
+      actorPortrait.src = actorData.portrait;
+      actorPortrait.style.display = 'block';
+    } else {
+      actorPortrait.style.display = 'none';
+    }
+
+    // Resources (HP bars, spell slots, etc.)
+    resourcesContainer.innerHTML = (actorData.resources || [])
+      .map((r) => `
+        <div class="resource">
+          <label>${escapeHtml(r.label)}</label>
+          <div class="resource-bar">
+            <div class="resource-fill" style="width: ${Math.min(100, (r.current / r.max) * 100)}%; background: ${r.color || '#4ade80'}"></div>
+          </div>
+          <span class="resource-text">${r.current} / ${r.max}</span>
+        </div>
+      `)
+      .join('');
+
+    // Stats grid (AC, speed, level, etc.)
+    statsContainer.innerHTML = (actorData.stats || [])
+      .map((s) => `
+        <div class="stat">
+          <span class="stat-label">${escapeHtml(s.label)}</span>
+          <span class="stat-value">${escapeHtml(String(s.value))}</span>
+        </div>
+      `)
+      .join('');
+
+    // Conditions/status effects
+    conditionsContainer.innerHTML = (actorData.conditions || [])
+      .map((c) => `<span class="condition-badge">${escapeHtml(c)}</span>`)
+      .join('');
+  }
+
+  function switchTab(tabName) {
+    // Update tab button states
+    tabButtons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    // Update content visibility
+    dpadContent.classList.toggle('active', tabName === 'dpad');
+    infoContent.classList.toggle('active', tabName === 'info');
+
+    // Haptic feedback on tab switch
+    hapticFeedback(5);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   // ==========================================================================
   // MOVEMENT
   // ==========================================================================
@@ -335,10 +448,14 @@
     tokenId = null;
     tokenName = null;
     pendingPairingCode = null;
+    actorData = null;
     pairingCodeInput.value = '';
 
     showScreen('pairing');
     showToast('', '');
+
+    // Reset to D-pad tab
+    switchTab('dpad');
   }
 
   // ==========================================================================

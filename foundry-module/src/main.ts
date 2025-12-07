@@ -37,11 +37,16 @@ import {
   clampPosition,
 } from './core';
 
+import { getAdapter, type ActorPanelData } from './adapters';
+
 // Module configuration
 const MODULE_ID = 'vtt-remote';
 
 // Active pairing sessions (stored in memory only)
 const pairingSessions = new Map<string, PairingSession>();
+
+// Track which tokenIds have paired remotes (for real-time updates)
+const pairedTokens = new Set<string>();
 
 // WebSocket connection to relay server
 let relaySocket: WebSocket | null = null;
@@ -79,6 +84,9 @@ Hooks.once('ready', () => {
 
   // Register Token HUD button
   registerTokenHUD();
+
+  // Register hooks for real-time actor updates
+  registerActorUpdateHooks();
 });
 
 // =============================================================================
@@ -236,11 +244,20 @@ function handlePairRequest(payload: unknown): void {
     const token = scene?.tokens?.get(session.tokenId);
     const actor = game.actors?.get(session.actorId);
 
+    // Track this token for real-time updates
+    pairedTokens.add(session.tokenId);
+
     sendMessage('PAIR_SUCCESS', {
       tokenId: session.tokenId,
       tokenName: token?.name ?? 'Unknown Token',
       actorName: actor?.name ?? '',
     });
+
+    // Send initial actor info for the info panel
+    const actorData = getActorPanelData(session.tokenId, session.sceneId);
+    if (actorData) {
+      sendMessage('ACTOR_INFO', actorData);
+    }
 
     console.log(`${MODULE_ID} | Pairing successful for token: ${token?.name}`);
   } else {
@@ -307,6 +324,97 @@ async function handleMoveCommand(payload: unknown): Promise<void> {
 }
 
 // =============================================================================
+// ACTOR INFO PANEL (Shell)
+// =============================================================================
+
+/**
+ * Get normalized actor panel data using the system adapter.
+ */
+function getActorPanelData(tokenId: string, sceneId?: string): ActorPanelData | null {
+  const adapter = getAdapter();
+  if (!adapter) {
+    console.warn(`${MODULE_ID} | No adapter for system: ${game.system?.id}`);
+    return null;
+  }
+
+  // Find the token - check specific scene or search all scenes
+  let token: any = null;
+  if (sceneId) {
+    const scene = game.scenes?.get(sceneId);
+    token = scene?.tokens?.get(tokenId);
+  } else {
+    // Search all scenes for the token
+    for (const scene of game.scenes ?? []) {
+      token = scene.tokens?.get(tokenId);
+      if (token) break;
+    }
+  }
+
+  if (!token) {
+    console.warn(`${MODULE_ID} | Token not found: ${tokenId}`);
+    return null;
+  }
+
+  const actor = token.actor;
+  if (!actor) {
+    console.warn(`${MODULE_ID} | Token has no actor: ${tokenId}`);
+    return null;
+  }
+
+  try {
+    return adapter.extractActorData(actor, token);
+  } catch (err) {
+    console.error(`${MODULE_ID} | Error extracting actor data:`, err);
+    return null;
+  }
+}
+
+/**
+ * Register hooks for real-time actor/token updates.
+ */
+function registerActorUpdateHooks(): void {
+  // Hook actor updates (HP changes, etc.)
+  Hooks.on('updateActor', (actor: any, _changes: any, _options: any, _userId: string) => {
+    // Find tokens for this actor that are paired
+    for (const scene of game.scenes ?? []) {
+      for (const token of scene.tokens ?? []) {
+        if (token.actorId === actor.id && pairedTokens.has(token.id)) {
+          const actorData = getActorPanelData(token.id, scene.id);
+          if (actorData) {
+            sendMessage('ACTOR_UPDATE', {
+              tokenId: token.id,
+              changes: actorData,
+            });
+          }
+        }
+      }
+    }
+  });
+
+  // Hook token updates (conditions, effects, etc.)
+  Hooks.on('updateToken', (token: any, _changes: any, _options: any, _userId: string) => {
+    if (pairedTokens.has(token.id)) {
+      const actorData = getActorPanelData(token.id);
+      if (actorData) {
+        sendMessage('ACTOR_UPDATE', {
+          tokenId: token.id,
+          changes: actorData,
+        });
+      }
+    }
+  });
+
+  console.log(`${MODULE_ID} | Actor update hooks registered`);
+}
+
+/**
+ * Remove a token from the paired set when session expires.
+ */
+function cleanupPairedToken(tokenId: string): void {
+  pairedTokens.delete(tokenId);
+}
+
+// =============================================================================
 // TOKEN HUD (Shell)
 // =============================================================================
 
@@ -349,6 +457,7 @@ async function showPairingDialog(tokenData: any): Promise<void> {
   // Schedule auto-expire
   setTimeout(() => {
     pairingSessions.delete(session.code);
+    cleanupPairedToken(session.tokenId);
   }, SESSION_TTL_MS);
 
   const roomCode = ensureRoomCode();

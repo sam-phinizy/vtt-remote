@@ -166,6 +166,89 @@ Sent by Foundry to confirm movement was applied.
 
 ---
 
+### ACTOR_INFO
+
+Sent by Foundry immediately after PAIR_SUCCESS to provide actor data for the info panel.
+
+**Direction:** Foundry → Phone (via relay)
+
+```json
+{
+  "type": "ACTOR_INFO",
+  "payload": {
+    "tokenId": "abc123",
+    "name": "Shadowcat",
+    "portrait": "/path/to/image.png",
+    "resources": [
+      { "id": "hp", "label": "HP", "current": 25, "max": 45, "color": "#e74c3c" }
+    ],
+    "stats": [
+      { "id": "ac", "label": "AC", "value": 16 },
+      { "id": "speed", "label": "Speed", "value": "30 ft" }
+    ],
+    "conditions": ["prone", "poisoned"]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| tokenId | string | Token document ID |
+| name | string | Token display name |
+| portrait | string | URL or path to actor image (optional) |
+| resources | array | Trackable resources (HP, spell slots, etc.) |
+| stats | array | Static stats (AC, speed, level, etc.) |
+| conditions | array | Active status effects |
+
+**Resource Object:**
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Unique identifier |
+| label | string | Display label |
+| current | number | Current value |
+| max | number | Maximum value |
+| color | string | Hex color for UI (optional) |
+
+**Stat Object:**
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Unique identifier |
+| label | string | Display label |
+| value | string/number | Stat value |
+
+---
+
+### ACTOR_UPDATE
+
+Sent by Foundry when paired actor data changes (HP damage, conditions added, etc.).
+
+**Direction:** Foundry → Phone (via relay)
+
+```json
+{
+  "type": "ACTOR_UPDATE",
+  "payload": {
+    "tokenId": "abc123",
+    "changes": {
+      "tokenId": "abc123",
+      "name": "Shadowcat",
+      "resources": [...],
+      "stats": [...],
+      "conditions": [...]
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| tokenId | string | Token document ID |
+| changes | object | Full ActorPanelData with current values |
+
+**Note:** The `changes` object contains the complete current actor state, not a diff. The phone client replaces its cached data with this payload.
+
+---
+
 ## Connection Lifecycle
 
 1. Client opens WebSocket to `/ws`
