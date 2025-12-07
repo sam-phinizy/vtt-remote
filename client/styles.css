@@ -1,0 +1,238 @@
+/**
+ * VTT Remote - Phone Client Styles
+ * Mobile-first design for touch-based token control
+ */
+
+:root {
+  --color-bg: #1a1a2e;
+  --color-surface: #16213e;
+  --color-primary: #e94560;
+  --color-primary-hover: #ff6b6b;
+  --color-text: #eaeaea;
+  --color-text-muted: #a0a0a0;
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  --color-border: #2d3748;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#app {
+  width: 100%;
+  max-width: 400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Screen management */
+.screen {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+  padding: 2rem;
+}
+
+.screen.active {
+  display: flex;
+}
+
+/* Pairing Screen */
+#pairing-screen {
+  justify-content: center;
+  gap: 2rem;
+}
+
+#pairing-screen h1 {
+  text-align: center;
+  font-size: 2rem;
+  color: var(--color-primary);
+}
+
+#pairing-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.input-group label {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.input-group input {
+  padding: 1rem;
+  font-size: 1.25rem;
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+#connect-btn {
+  padding: 1rem 2rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#connect-btn:hover {
+  background: var(--color-primary-hover);
+}
+
+#connect-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status {
+  text-align: center;
+  font-size: 0.875rem;
+  min-height: 1.5em;
+}
+
+.status.error {
+  color: var(--color-error);
+}
+
+.status.success {
+  color: var(--color-success);
+}
+
+/* Control Screen */
+#control-screen {
+  justify-content: space-between;
+}
+
+#control-screen header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#actor-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  font-size: 1.5rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* D-Pad */
+.dpad {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0.5rem;
+  max-width: 300px;
+  max-height: 300px;
+  aspect-ratio: 1;
+  margin: auto;
+}
+
+.dpad-btn {
+  font-size: 2rem;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.dpad-btn[data-dir="up"] { grid-area: up; }
+.dpad-btn[data-dir="down"] { grid-area: down; }
+.dpad-btn[data-dir="left"] { grid-area: left; }
+.dpad-btn[data-dir="right"] { grid-area: right; }
+
+.dpad-btn:active {
+  background: var(--color-primary);
+  color: white;
+  transform: scale(0.95);
+}
+
+/* Footer */
+#control-screen footer {
+  text-align: center;
+}
+
+#connection-status {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+#connection-status.connected::before {
+  content: '●';
+  color: var(--color-success);
+  margin-right: 0.5rem;
+}
+
+#connection-status.disconnected::before {
+  content: '●';
+  color: var(--color-error);
+  margin-right: 0.5rem;
+}
+
+/* Responsive */
+@media (max-height: 600px) {
+  .screen {
+    padding: 1rem;
+  }
+
+  .dpad {
+    max-width: 200px;
+    max-height: 200px;
+  }
+}

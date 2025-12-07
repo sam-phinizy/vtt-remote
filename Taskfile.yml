@@ -1,0 +1,138 @@
+# https://taskfile.dev
+version: '3'
+
+vars:
+  DIST_DIR: dist
+  SERVER_DIR: server
+  CLIENT_DIR: client
+  MODULE_DIR: foundry-module
+
+tasks:
+  # ================================
+  # Default & Aggregate Tasks
+  # ================================
+
+  default:
+    desc: Build everything (client, server, module)
+    deps: [build:server, build:module]
+
+  # ================================
+  # Client (Web Remote)
+  # ================================
+
+  build:client:
+    desc: Copy client files to server/public for embedding
+    cmds:
+      - rm -rf {{.SERVER_DIR}}/public/*
+      - cp -r {{.CLIENT_DIR}}/* {{.SERVER_DIR}}/public/
+    sources:
+      - '{{.CLIENT_DIR}}/**/*'
+    generates:
+      - '{{.SERVER_DIR}}/public/**/*'
+
+  # ================================
+  # Server (Go Relay)
+  # ================================
+
+  build:server:
+    desc: Build Go binary with embedded client
+    deps: [build:client]
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - mkdir -p ../{{.DIST_DIR}}
+      - go build -o ../{{.DIST_DIR}}/vtt-remote .
+    sources:
+      - '{{.SERVER_DIR}}/**/*.go'
+      - '{{.SERVER_DIR}}/go.mod'
+      - '{{.SERVER_DIR}}/go.sum'
+    generates:
+      - '{{.DIST_DIR}}/vtt-remote'
+
+  dev:server:
+    desc: Run server in development mode
+    deps: [build:client]
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go run .
+
+  # ================================
+  # Foundry Module
+  # ================================
+
+  install:module:
+    desc: Install Foundry module npm dependencies
+    dir: '{{.MODULE_DIR}}'
+    cmds:
+      - npm install
+    sources:
+      - '{{.MODULE_DIR}}/package.json'
+      - '{{.MODULE_DIR}}/package-lock.json'
+    generates:
+      - '{{.MODULE_DIR}}/node_modules/.package-lock.json'
+
+  build:module:
+    desc: Build Foundry VTT module
+    dir: '{{.MODULE_DIR}}'
+    deps: [install:module]
+    cmds:
+      - npm run build
+      - mkdir -p ../{{.DIST_DIR}}/foundry-module
+      - cp module.json ../{{.DIST_DIR}}/foundry-module/
+      - cp -r dist/* ../{{.DIST_DIR}}/foundry-module/
+      - cp -r styles ../{{.DIST_DIR}}/foundry-module/
+      - cp -r languages ../{{.DIST_DIR}}/foundry-module/
+      - cp -r templates ../{{.DIST_DIR}}/foundry-module/ 2>/dev/null || true
+    sources:
+      - '{{.MODULE_DIR}}/src/**/*'
+      - '{{.MODULE_DIR}}/styles/**/*'
+      - '{{.MODULE_DIR}}/languages/**/*'
+      - '{{.MODULE_DIR}}/module.json'
+    generates:
+      - '{{.DIST_DIR}}/foundry-module/**/*'
+
+  dev:module:
+    desc: Run Foundry module build in watch mode
+    dir: '{{.MODULE_DIR}}'
+    deps: [install:module]
+    cmds:
+      - npm run watch
+
+  package:module:
+    desc: Create distributable module zip
+    deps: [build:module]
+    dir: '{{.DIST_DIR}}'
+    cmds:
+      - zip -r vtt-remote-module.zip foundry-module
+    generates:
+      - '{{.DIST_DIR}}/vtt-remote-module.zip'
+
+  # ================================
+  # Quality Checks
+  # ================================
+
+  typecheck:
+    desc: Type check Foundry module
+    dir: '{{.MODULE_DIR}}'
+    deps: [install:module]
+    cmds:
+      - npm run typecheck
+
+  lint:
+    desc: Lint Foundry module
+    dir: '{{.MODULE_DIR}}'
+    deps: [install:module]
+    cmds:
+      - npm run lint
+
+  # ================================
+  # Utilities
+  # ================================
+
+  clean:
+    desc: Remove all build artifacts
+    cmds:
+      - rm -rf {{.DIST_DIR}}
+      - rm -rf {{.MODULE_DIR}}/dist
+      - rm -rf {{.MODULE_DIR}}/node_modules
+      - rm -rf {{.SERVER_DIR}}/public/*
+      - touch {{.SERVER_DIR}}/public/.keep

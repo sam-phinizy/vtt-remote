@@ -1,0 +1,21 @@
+{
+  "VTT_REMOTE": {
+    "Title": "VTT Remote Control",
+    "PairingDialog": {
+      "Title": "Remote Pairing",
+      "Instructions": "Enter this code on your phone to control this token:",
+      "Expires": "Code expires in 5 minutes"
+    },
+    "Status": {
+      "Connected": "Connected to relay",
+      "Disconnected": "Disconnected",
+      "Connecting": "Connecting..."
+    },
+    "Settings": {
+      "RelayServerUrl": "Relay Server URL",
+      "RelayServerUrlHint": "WebSocket URL of the VTT Remote relay server",
+      "RoomCode": "Room Code",
+      "RoomCodeHint": "Unique identifier for this game session"
+    }
+  }
+}

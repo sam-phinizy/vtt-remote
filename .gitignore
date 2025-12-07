@@ -1,0 +1,51 @@
+# VTT Remote .gitignore
+# ======================
+
+# Build outputs
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+server/vtt-remote
+*.test
+*.out
+coverage.txt
+
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Foundry module dev
+foundry-module/dist/
+
+# Don't ignore the .keep file in server/public
+!server/public/.keep
+
+# Logs
+logs/
+*.log
+
+# OS files
+Thumbs.db

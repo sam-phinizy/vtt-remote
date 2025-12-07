@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>VTT Remote</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Pairing Screen -->
+    <section id="pairing-screen" class="screen active">
+      <h1>VTT Remote</h1>
+      <form id="pairing-form">
+        <div class="input-group">
+          <label for="room-code">Room Code</label>
+          <input
+            type="text"
+            id="room-code"
+            name="roomCode"
+            placeholder="e.g., GAME1"
+            autocomplete="off"
+            autocapitalize="characters"
+            required
+          >
+        </div>
+        <div class="input-group">
+          <label for="pairing-code">Pairing Code</label>
+          <input
+            type="text"
+            id="pairing-code"
+            name="pairingCode"
+            placeholder="e.g., 5599"
+            inputmode="numeric"
+            pattern="[0-9]{4}"
+            maxlength="4"
+            autocomplete="off"
+            required
+          >
+        </div>
+        <button type="submit" id="connect-btn">Connect</button>
+      </form>
+      <p id="status-message" class="status"></p>
+    </section>
+
+    <!-- Control Screen -->
+    <section id="control-screen" class="screen">
+      <header>
+        <span id="actor-name">Token Name</span>
+        <button id="disconnect-btn" class="icon-btn" title="Disconnect">×</button>
+      </header>
+
+      <div id="dpad" class="dpad">
+        <button class="dpad-btn" data-dir="up" aria-label="Move Up">▲</button>
+        <button class="dpad-btn" data-dir="left" aria-label="Move Left">◀</button>
+        <button class="dpad-btn" data-dir="right" aria-label="Move Right">▶</button>
+        <button class="dpad-btn" data-dir="down" aria-label="Move Down">▼</button>
+      </div>
+
+      <footer>
+        <span id="connection-status" class="connected">Connected</span>
+      </footer>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
