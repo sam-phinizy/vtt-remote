@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -60,9 +61,13 @@ func main() {
 	// WebSocket endpoint for relay
 	mux.HandleFunc("/ws", handleWebSocket)
 
-	// Start HTTP server
+	// Start HTTP server (bind to all interfaces for LAN access)
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("VTT Remote server starting on http://localhost%s", addr)
+	log.Printf("VTT Remote server starting:")
+	log.Printf("  Local:   http://localhost:%d", *port)
+	if ip := getLocalIP(); ip != "" {
+		log.Printf("  Network: http://%s:%d", ip, *port)
+	}
 
 	// Graceful shutdown
 	go func() {
@@ -82,7 +87,8 @@ func main() {
 // startNATS initializes and starts the embedded NATS server.
 func startNATS() (*server.Server, error) {
 	opts := &server.Options{
-		// Ephemeral in-memory only, no persistence
+		Host:   "127.0.0.1",
+		Port:   -1, // Random available port
 		NoLog:  true,
 		NoSigs: true,
 	}
@@ -112,4 +118,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("New WebSocket connection from %s", r.RemoteAddr)
 	relay.HandleClient(conn)
+}
+
+// getLocalIP returns the preferred outbound IP of this machine.
+func getLocalIP() string {
+	// Use UDP dial to find the preferred outbound IP
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }

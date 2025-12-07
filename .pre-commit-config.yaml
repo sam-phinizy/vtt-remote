@@ -1,0 +1,71 @@
+# Pre-commit hooks for VTT Remote
+# Install: pip install pre-commit && pre-commit install
+# https://pre-commit.com/
+
+repos:
+  # General checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+
+  # Go formatting and linting
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        files: ^server/
+      - id: go-imports
+        files: ^server/
+      - id: go-vet
+        files: ^server/
+
+  # Go linting with golangci-lint (local)
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -c 'cd server && golangci-lint run ./...'
+        language: system
+        pass_filenames: false
+        files: ^server/.*\.go$
+
+  # Go tests
+  - repo: local
+    hooks:
+      - id: go-test
+        name: go test
+        entry: bash -c 'cd server && go test -race ./...'
+        language: system
+        pass_filenames: false
+        files: ^server/.*\.go$
+
+  # TypeScript/JS linting and typecheck
+  - repo: local
+    hooks:
+      - id: npm-lint
+        name: npm lint
+        entry: bash -c 'cd foundry-module && npm run lint'
+        language: system
+        pass_filenames: false
+        files: ^foundry-module/.*\.(ts|js)$
+
+      - id: npm-typecheck
+        name: npm typecheck
+        entry: bash -c 'cd foundry-module && npm run typecheck'
+        language: system
+        pass_filenames: false
+        files: ^foundry-module/.*\.ts$
+
+      - id: npm-test
+        name: npm test
+        entry: bash -c 'cd foundry-module && npm run test'
+        language: system
+        pass_filenames: false
+        files: ^foundry-module/.*\.ts$

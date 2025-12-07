@@ -120,8 +120,8 @@ These features are nice-to-have but not required for MVP:
 
 ## Quick Wins (Anytime)
 
-- [ ] Add ESLint config to root for TypeScript
-- [ ] Add golangci-lint config for Go
-- [ ] Set up GitHub Actions for CI
-- [ ] Add pre-commit hooks
+- [x] Add ESLint config to root for TypeScript
+- [x] Add golangci-lint config for Go
+- [x] Set up GitHub Actions for CI
+- [x] Add pre-commit hooks
 - [x] Write protocol.md documenting message format

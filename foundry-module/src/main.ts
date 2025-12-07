@@ -88,11 +88,11 @@ Hooks.once('ready', () => {
 function registerSettings(): void {
   game.settings?.register(MODULE_ID, 'relayServerUrl', {
     name: game.i18n?.localize('VTT_REMOTE.Settings.RelayServerUrl') ?? 'Relay Server URL',
-    hint: game.i18n?.localize('VTT_REMOTE.Settings.RelayServerUrlHint') ?? 'WebSocket URL of the VTT Remote relay server',
+    hint: game.i18n?.localize('VTT_REMOTE.Settings.RelayServerUrlHint') ?? 'WebSocket URL of the VTT Remote relay server (leave empty to auto-detect)',
     scope: 'world',
     config: true,
     type: String,
-    default: 'ws://localhost:8080/ws',
+    default: '',
   });
 
   game.settings?.register(MODULE_ID, 'roomCode', {
@@ -119,13 +119,31 @@ function ensureRoomCode(): string {
 // WEBSOCKET CONNECTION (Shell)
 // =============================================================================
 
-function connectToRelay(): void {
-  const url = game.settings?.get(MODULE_ID, 'relayServerUrl') as string;
+const RELAY_PORT = 8181;
 
-  if (!url) {
-    console.warn(`${MODULE_ID} | No relay server URL configured`);
-    return;
+/**
+ * Get the relay WebSocket URL, auto-detecting from current hostname if not configured.
+ */
+function getRelayUrl(): string {
+  const configured = game.settings?.get(MODULE_ID, 'relayServerUrl') as string;
+  if (configured) {
+    return configured;
   }
+  // Auto-detect: use same hostname as Foundry, default relay port
+  const hostname = window.location.hostname || 'localhost';
+  return `ws://${hostname}:${RELAY_PORT}/ws`;
+}
+
+/**
+ * Get the relay HTTP base URL for QR codes.
+ */
+function getRelayHttpUrl(): string {
+  const wsUrl = getRelayUrl();
+  return wsUrl.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws', '');
+}
+
+function connectToRelay(): void {
+  const url = getRelayUrl();
 
   // Don't reconnect if already connected
   if (relaySocket?.readyState === WebSocket.OPEN) {
@@ -334,11 +352,9 @@ async function showPairingDialog(tokenData: any): Promise<void> {
   }, SESSION_TTL_MS);
 
   const roomCode = ensureRoomCode();
-  const relayUrl = game.settings?.get(MODULE_ID, 'relayServerUrl') as string;
 
   // Build URL for QR code (phone connects to web client with params)
-  const baseUrl = relayUrl.replace('/ws', '').replace('ws://', 'http://').replace('wss://', 'https://');
-  const clientUrl = `${baseUrl}?room=${roomCode}&code=${session.code}`;
+  const clientUrl = `${getRelayHttpUrl()}?room=${roomCode}&code=${session.code}`;
 
   const isConnected = relaySocket?.readyState === WebSocket.OPEN;
   const connectionClass = isConnected ? 'connected' : 'disconnected';
