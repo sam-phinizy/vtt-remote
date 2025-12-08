@@ -14,7 +14,13 @@
       "Bash(task build:module)",
       "Bash(task test:module)",
       "Bash(task test:server)",
-      "Bash(task build:server)"
+      "Bash(task build:server)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run build:*)",
+      "Bash(go test:*)",
+      "Bash(ls:*)",
+      "Bash(task link:*)"
     ],
     "deny": [],
     "ask": []

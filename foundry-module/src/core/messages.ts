@@ -10,6 +10,11 @@ export type MessageType =
   | 'PAIR'
   | 'PAIR_SUCCESS'
   | 'PAIR_FAILED'
+  | 'LOGIN'
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_FAILED'
+  | 'SELECT_TOKEN'
+  | 'SELECT_TOKEN_SUCCESS'
   | 'MOVE'
   | 'MOVE_ACK'
   | 'ACTOR_INFO'
@@ -40,6 +45,45 @@ export interface PairSuccessPayload {
 
 export interface PairFailedPayload {
   reason: string;
+}
+
+// ============================================================================
+// LOGIN / TOKEN SELECTION (Password-based auth)
+// ============================================================================
+
+export interface LoginPayload {
+  username: string;
+  passwordHash: string; // SHA256(password + roomCode)
+}
+
+export interface LoginTokenInfo {
+  tokenId: string;
+  sceneId: string;
+  sceneName?: string;
+  name: string;
+  actorId: string;
+  img?: string;
+}
+
+export interface LoginSuccessPayload {
+  userId: string;
+  userName: string;
+  availableTokens: LoginTokenInfo[];
+}
+
+export interface LoginFailedPayload {
+  reason: 'invalid_credentials' | 'no_password_set' | 'user_not_found';
+}
+
+export interface SelectTokenPayload {
+  tokenId: string;
+  sceneId: string;
+}
+
+export interface SelectTokenSuccessPayload {
+  tokenId: string;
+  tokenName: string;
+  actorName?: string;
 }
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
@@ -99,6 +143,11 @@ export type HandlerType =
   | 'pair'
   | 'pairSuccess'
   | 'pairFailed'
+  | 'login'
+  | 'loginSuccess'
+  | 'loginFailed'
+  | 'selectToken'
+  | 'selectTokenSuccess'
   | 'move'
   | 'moveAck'
   | 'actorInfo'
@@ -149,6 +198,11 @@ export function routeMessage(msg: Envelope): RouteResult {
     PAIR: 'pair',
     PAIR_SUCCESS: 'pairSuccess',
     PAIR_FAILED: 'pairFailed',
+    LOGIN: 'login',
+    LOGIN_SUCCESS: 'loginSuccess',
+    LOGIN_FAILED: 'loginFailed',
+    SELECT_TOKEN: 'selectToken',
+    SELECT_TOKEN_SUCCESS: 'selectTokenSuccess',
     MOVE: 'move',
     MOVE_ACK: 'moveAck',
     ACTOR_INFO: 'actorInfo',
@@ -228,5 +282,33 @@ export function isRollDicePayload(payload: unknown): payload is RollDicePayload 
     typeof (payload as RollDicePayload).tokenId === 'string' &&
     typeof (payload as RollDicePayload).formula === 'string' &&
     typeof (payload as RollDicePayload).postToChat === 'boolean'
+  );
+}
+
+/**
+ * Type guard for LoginPayload.
+ */
+export function isLoginPayload(payload: unknown): payload is LoginPayload {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'username' in payload &&
+    'passwordHash' in payload &&
+    typeof (payload as LoginPayload).username === 'string' &&
+    typeof (payload as LoginPayload).passwordHash === 'string'
+  );
+}
+
+/**
+ * Type guard for SelectTokenPayload.
+ */
+export function isSelectTokenPayload(payload: unknown): payload is SelectTokenPayload {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'tokenId' in payload &&
+    'sceneId' in payload &&
+    typeof (payload as SelectTokenPayload).tokenId === 'string' &&
+    typeof (payload as SelectTokenPayload).sceneId === 'string'
   );
 }

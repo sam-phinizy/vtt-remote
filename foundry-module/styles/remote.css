@@ -55,11 +55,102 @@
   background: var(--color-level-success);
 }
 
-/* Token HUD button */
+/* Token HUD button (legacy) */
 .vtt-remote-hud-button {
   cursor: pointer;
 }
 
 .vtt-remote-hud-button:hover {
   filter: brightness(1.2);
+}
+
+/* Token Config header button */
+.vtt-remote-config-btn {
+  margin-left: 0.5rem;
+  cursor: pointer;
+  color: var(--color-text-light-highlight);
+}
+
+.vtt-remote-config-btn:hover {
+  color: var(--color-text-hyperlink);
+  text-shadow: 0 0 8px var(--color-shadow-primary);
+}
+
+/* ==========================================================================
+   Password Manager Styles
+   ========================================================================== */
+
+.vtt-remote-password-manager {
+  padding: 0.5rem;
+}
+
+.vtt-remote-password-manager .notes {
+  margin-bottom: 1rem;
+  font-style: italic;
+  color: var(--color-text-dark-secondary);
+}
+
+.vtt-remote-user-list {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.vtt-remote-user-list th,
+.vtt-remote-user-list td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-light-tertiary);
+}
+
+.vtt-remote-user-list th {
+  font-weight: bold;
+  color: var(--color-text-dark-primary);
+}
+
+.vtt-remote-user-list .current-user {
+  background: var(--color-bg-option);
+}
+
+.vtt-remote-user-list .tag {
+  font-size: 0.8em;
+  color: var(--color-text-dark-secondary);
+  margin-left: 0.25rem;
+}
+
+.vtt-remote-user-list .status-set {
+  color: var(--color-level-success);
+}
+
+.vtt-remote-user-list .status-not-set {
+  color: var(--color-text-dark-secondary);
+}
+
+.vtt-remote-user-list .actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vtt-remote-user-list .set-password-btn,
+.vtt-remote-user-list .clear-password-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.vtt-remote-user-list .clear-password-btn {
+  background: var(--color-level-error);
+  border-color: var(--color-level-error);
+}
+
+.vtt-remote-user-list .no-access {
+  color: var(--color-text-dark-secondary);
+}
+
+.vtt-remote-password-manager .hint {
+  font-size: 0.9em;
+  color: var(--color-text-dark-secondary);
+  padding: 0.5rem;
+  background: var(--color-bg-option);
+  border-radius: 4px;
 }

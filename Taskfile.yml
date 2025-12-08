@@ -7,7 +7,7 @@ vars:
   CLIENT_DIR: client
   MODULE_DIR: foundry-module
   # Foundry data path - override with FOUNDRY_DATA env var
-  FOUNDRY_DATA: '{{.FOUNDRY_DATA | default "~/Library/Application Support/FoundryVTT/Data"}}'
+  FOUNDRY_DATA: '{{.FOUNDRY_DATA | default "/Users/sphinizy/foundrydata/Data"}}'
 
 tasks:
   # ================================
@@ -101,11 +101,27 @@ tasks:
       - '{{.DIST_DIR}}/foundry-module/**/*'
 
   dev:module:
-    desc: Run Foundry module build in watch mode
+    desc: Watch source files, rebuild and copy to Foundry on changes
+    deps: [copy:module]
     dir: '{{.MODULE_DIR}}'
-    deps: [install:module]
+    vars:
+      MODULE_DEST: '~/Library/Application Support/FoundryVTT/Data/modules/vtt-remote'
     cmds:
-      - npm run watch
+      - |
+        echo "👀 Watching for changes... (Ctrl+C to stop)"
+        npx chokidar "src/**/*" "styles/**/*" "languages/**/*" "templates/**/*" "module.json" -c "task copy:module"
+
+  copy:module:
+    desc: Build and copy module to Foundry (one-shot)
+    deps: [build:module]
+    vars:
+      MODULE_DEST: '~/Library/Application Support/FoundryVTT/Data/modules/vtt-remote'
+    cmds:
+      - |
+        DEST=$(eval echo "{{.MODULE_DEST}}")
+        rm -rf "$DEST"
+        cp -R "{{.DIST_DIR}}/foundry-module" "$DEST"
+        echo "✓ Copied module to $DEST"
 
   package:module:
     desc: Create distributable module zip

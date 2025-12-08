@@ -12,13 +12,61 @@
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
   <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
   <div id="app">
-    <!-- Pairing Screen -->
+    <!-- Auth Screen (Login or Pairing) -->
     <section id="pairing-screen" class="screen active">
       <h1>VTT Remote</h1>
-      <form id="pairing-form">
+
+      <!-- Auth Mode Tabs -->
+      <nav class="auth-tabs">
+        <button class="auth-tab active" data-mode="login">Login</button>
+        <button class="auth-tab" data-mode="pairing">QR/Code</button>
+      </nav>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form">
+        <div class="input-group">
+          <label for="login-room-code">Room Code</label>
+          <input
+            type="text"
+            id="login-room-code"
+            name="roomCode"
+            placeholder="e.g., GAME1"
+            autocomplete="off"
+            autocapitalize="characters"
+            required
+          >
+        </div>
+        <div class="input-group">
+          <label for="login-username">Username</label>
+          <input
+            type="text"
+            id="login-username"
+            name="username"
+            placeholder="Your Foundry username"
+            autocomplete="username"
+            required
+          >
+        </div>
+        <div class="input-group">
+          <label for="login-password">Password</label>
+          <input
+            type="password"
+            id="login-password"
+            name="password"
+            placeholder="Your remote password"
+            autocomplete="current-password"
+            required
+          >
+        </div>
+        <button type="submit" id="login-btn">Login</button>
+      </form>
+
+      <!-- Pairing Form (hidden by default) -->
+      <form id="pairing-form" class="auth-form hidden">
         <div class="input-group">
           <label for="room-code">Room Code</label>
           <input
@@ -46,13 +94,49 @@
           >
         </div>
         <button type="submit" id="connect-btn">Connect</button>
+        <div class="form-divider"><span>or</span></div>
+        <button type="button" id="scan-qr-btn" class="scan-btn">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+            <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+            <rect x="7" y="7" width="10" height="10"/>
+          </svg>
+          Scan QR Code
+        </button>
       </form>
+
       <p id="status-message" class="status"></p>
+
+      <!-- QR Scanner Modal -->
+      <div id="qr-scanner-modal" class="scanner-modal hidden">
+        <div class="scanner-header">
+          <h2>Scan QR Code</h2>
+          <button id="close-scanner-btn" class="icon-btn" title="Close">×</button>
+        </div>
+        <div id="qr-reader"></div>
+        <p class="scanner-hint">Point camera at QR code from Foundry</p>
+      </div>
+    </section>
+
+    <!-- Token Picker Screen (after login) -->
+    <section id="token-picker-screen" class="screen">
+      <header>
+        <span id="picker-username">Username</span>
+        <button id="picker-logout-btn" class="icon-btn" title="Logout">×</button>
+      </header>
+      <h2>Select Token</h2>
+      <div id="token-list" class="token-list">
+        <!-- Dynamically populated with available tokens -->
+      </div>
+      <p id="no-tokens-message" class="notes hidden">No tokens available to control</p>
     </section>
 
     <!-- Control Screen -->
     <section id="control-screen" class="screen">
       <header>
+        <button id="switch-token-btn" class="icon-btn" title="Switch Token">⇄</button>
         <span id="actor-name">Token Name</span>
         <button id="disconnect-btn" class="icon-btn" title="Disconnect">×</button>
       </header>

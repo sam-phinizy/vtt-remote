@@ -1,5 +1,21 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import { cpSync, existsSync } from 'fs';
+
+// Copy static Foundry module assets after build
+function copyFoundryAssets() {
+  return {
+    name: 'copy-foundry-assets',
+    closeBundle() {
+      const assets = ['module.json', 'languages', 'styles', 'templates'];
+      for (const asset of assets) {
+        if (existsSync(asset)) {
+          cpSync(asset, `dist/${asset}`, { recursive: true });
+        }
+      }
+    },
+  };
+}
 
 export default defineConfig({
   build: {
@@ -18,6 +34,5 @@ export default defineConfig({
       },
     },
   },
-  // Copy static assets to dist
-  publicDir: false,
+  plugins: [copyFoundryAssets()],
 });

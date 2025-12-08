@@ -15,7 +15,39 @@
       "RelayServerUrl": "Relay Server URL",
       "RelayServerUrlHint": "WebSocket URL of the VTT Remote relay server",
       "RoomCode": "Room Code",
-      "RoomCodeHint": "Unique identifier for this game session"
+      "RoomCodeHint": "Unique identifier for this game session",
+      "PasswordManager": "Manage Remote Passwords",
+      "PasswordManagerLabel": "Manage Passwords",
+      "PasswordManagerHint": "Set passwords for remote phone connections"
+    },
+    "PasswordManager": {
+      "Title": "Password Manager",
+      "Instructions": "Set passwords for remote phone connections.",
+      "InstructionsGM": "GMs can set or clear any player's password.",
+      "User": "User",
+      "Status": "Status",
+      "Actions": "Actions",
+      "PasswordSet": "Set",
+      "PasswordNotSet": "Not Set",
+      "SetPassword": "Set",
+      "ChangePassword": "Change",
+      "ClearPassword": "Clear",
+      "NoAccess": "-",
+      "YouTag": "(you)",
+      "SetPasswordTitle": "Set Password",
+      "NewPasswordLabel": "New Password for {name}",
+      "PasswordPlaceholder": "Enter password",
+      "Save": "Save",
+      "Cancel": "Cancel",
+      "PasswordSetSuccess": "Password set for {name}",
+      "PasswordClearedSuccess": "Password cleared for {name}",
+      "Hint": "Passwords are used for phone remote connections. Each player needs to set a password before they can log in from a phone."
+    },
+    "Login": {
+      "UserNotFound": "Username not found",
+      "NoPasswordSet": "No password set. Ask GM to set one.",
+      "InvalidCredentials": "Invalid password",
+      "Success": "Login successful"
     }
   }
 }

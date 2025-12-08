@@ -14,6 +14,7 @@ declare const ui: any;
 declare const Hooks: any;
 declare const Dialog: any;
 declare const Roll: any;
+declare const ChatMessage: any;
 declare function $(selector: any): any;
 
 import {
@@ -25,6 +26,8 @@ import {
   isMovePayload,
   isUseAbilityPayload,
   isRollDicePayload,
+  isLoginPayload,
+  isSelectTokenPayload,
   type PairingSession,
   // Pairing
   createSession,
@@ -38,18 +41,136 @@ import {
   applyMovement,
   isValidDirection,
   clampPosition,
+  // Auth
+  type PasswordStore,
+  getControllableTokens,
+  type SceneData,
 } from './core';
 
 import { getAdapter, type ActorPanelData } from './adapters';
 
+// Foundry FormApplication class (declared for TypeScript)
+declare const FormApplication: any;
+
 // Module configuration
 const MODULE_ID = 'vtt-remote';
+
+// Placeholder for Password Manager Application
+// Will be properly implemented in apps/PasswordManager.ts
+class PasswordManagerApp extends FormApplication {
+  static get defaultOptions() {
+    return {
+      ...super.defaultOptions,
+      id: 'vtt-remote-password-manager',
+      title: 'VTT Remote - Password Manager',
+      template: 'modules/vtt-remote/templates/password-manager.html',
+      width: 400,
+      height: 'auto',
+    };
+  }
+
+  getData() {
+    const isGM = game.user?.isGM ?? false;
+    const currentUserId = game.user?.id ?? '';
+    const passwords = game.settings?.get(MODULE_ID, 'userPasswords') as PasswordStore ?? {};
+    const users = game.users?.contents ?? [];
+
+    return {
+      isGM,
+      currentUserId,
+      users: users.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        hasPassword: !!passwords[u.id],
+        isCurrentUser: u.id === currentUserId,
+        canEdit: isGM || u.id === currentUserId,
+      })),
+    };
+  }
+
+  activateListeners(html: any) {
+    super.activateListeners(html);
+    html.find('.set-password-btn').click(this._onSetPassword.bind(this));
+    html.find('.clear-password-btn').click(this._onClearPassword.bind(this));
+  }
+
+  async _onSetPassword(event: Event) {
+    event.preventDefault();
+    const button = event.currentTarget as HTMLElement;
+    const userId = button.dataset.userId;
+    if (!userId) return;
+
+    const user = game.users?.get(userId);
+    const userName = user?.name ?? 'Unknown';
+
+    // Show password input dialog
+    const content = `
+      <form>
+        <div class="form-group">
+          <label>New Password for ${userName}</label>
+          <input type="password" name="password" placeholder="Enter password">
+        </div>
+      </form>
+    `;
+
+    new Dialog({
+      title: `Set Password - ${userName}`,
+      content,
+      buttons: {
+        save: {
+          icon: '<i class="fas fa-check"></i>',
+          label: 'Save',
+          callback: async (html: any) => {
+            const password = html.find('input[name="password"]').val();
+            if (password) {
+              await setUserPassword(userId, password);
+              ui.notifications?.info(`Password set for ${userName}`);
+              this.render();
+            }
+          },
+        },
+        cancel: {
+          icon: '<i class="fas fa-times"></i>',
+          label: 'Cancel',
+        },
+      },
+      default: 'save',
+    }).render(true);
+  }
+
+  async _onClearPassword(event: Event) {
+    event.preventDefault();
+    const button = event.currentTarget as HTMLElement;
+    const userId = button.dataset.userId;
+    if (!userId) return;
+
+    const user = game.users?.get(userId);
+    const userName = user?.name ?? 'Unknown';
+
+    await clearUserPassword(userId);
+    ui.notifications?.info(`Password cleared for ${userName}`);
+    this.render();
+  }
+}
 
 // Active pairing sessions (stored in memory only)
 const pairingSessions = new Map<string, PairingSession>();
 
 // Track which tokenIds have paired remotes (for real-time updates)
 const pairedTokens = new Set<string>();
+
+// Authenticated sessions (password-based login)
+interface AuthenticatedSession {
+  userId: string;
+  userName: string;
+  tokenId?: string; // Currently selected token (optional until token picked)
+  sceneId?: string;
+  actorId?: string;
+  createdAt: number;
+}
+
+// Map from userId to authenticated session
+const authenticatedSessions = new Map<string, AuthenticatedSession>();
 
 // WebSocket connection to relay server
 let relaySocket: WebSocket | null = null;
@@ -85,8 +206,8 @@ Hooks.once('ready', () => {
   // Auto-connect to relay
   connectToRelay();
 
-  // Register Token HUD button
-  registerTokenHUD();
+  // Register Token Config button and context menu
+  registerTokenConfig();
 
   // Register hooks for real-time actor updates
   registerActorUpdateHooks();
@@ -114,6 +235,25 @@ function registerSettings(): void {
     type: String,
     default: '',
   });
+
+  // Password storage - not visible in settings UI
+  game.settings?.register(MODULE_ID, 'userPasswords', {
+    name: 'User Passwords',
+    scope: 'world',
+    config: false, // Hidden from settings UI
+    type: Object,
+    default: {} as PasswordStore,
+  });
+
+  // Menu for password management
+  game.settings?.registerMenu(MODULE_ID, 'passwordManager', {
+    name: game.i18n?.localize('VTT_REMOTE.Settings.PasswordManager') ?? 'Manage Remote Passwords',
+    label: game.i18n?.localize('VTT_REMOTE.Settings.PasswordManagerLabel') ?? 'Manage Passwords',
+    hint: game.i18n?.localize('VTT_REMOTE.Settings.PasswordManagerHint') ?? 'Set passwords for remote phone connections',
+    icon: 'fas fa-key',
+    type: PasswordManagerApp,
+    restricted: false, // Allow players to access (they can only set their own)
+  });
 }
 
 function ensureRoomCode(): string {
@@ -138,7 +278,15 @@ const RELAY_PORT = 8181;
 function getRelayUrl(): string {
   const configured = game.settings?.get(MODULE_ID, 'relayServerUrl') as string;
   if (configured) {
-    return configured;
+    // Normalize: add ws:// if missing, add /ws path if missing
+    let url = configured;
+    if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+      url = `ws://${url}`;
+    }
+    if (!url.endsWith('/ws')) {
+      url = `${url}/ws`;
+    }
+    return url;
   }
   // Auto-detect: use same hostname as Foundry, default relay port
   const hostname = window.location.hostname || 'localhost';
@@ -224,6 +372,12 @@ function handleMessage(data: string): void {
     case 'pair':
       handlePairRequest(payload);
       break;
+    case 'login':
+      handleLogin(payload);
+      break;
+    case 'selectToken':
+      handleSelectToken(payload);
+      break;
     case 'move':
       handleMoveCommand(payload);
       break;
@@ -295,6 +449,11 @@ async function handleMoveCommand(payload: unknown): Promise<void> {
   }
 
   // Find the session for this token
+  console.log(`${MODULE_ID} | Looking for session for token: ${payload.tokenId}`);
+  console.log(`${MODULE_ID} | pairingSessions has ${pairingSessions.size} entries`);
+  for (const [code, sess] of pairingSessions.entries()) {
+    console.log(`${MODULE_ID} |   - ${code}: tokenId=${sess.tokenId}`);
+  }
   const session = findSessionByToken(pairingSessions, payload.tokenId, Date.now()); // Core
   if (!session) {
     console.warn(`${MODULE_ID} | No active session for token: ${payload.tokenId}`);
@@ -388,7 +547,38 @@ async function handleUseAbility(payload: unknown): Promise<void> {
   try {
     // Use the item - this triggers rolls, chat messages, etc.
     console.log(`${MODULE_ID} | Using item: ${item.name}`);
-    await item.use({ configureDialog: false });
+
+    // dnd5e 3.x+ options to skip all configuration dialogs
+    // Create a synthetic event with shiftKey to trigger "fast forward" mode
+    const fastForwardEvent = new KeyboardEvent('keydown', { shiftKey: true });
+
+    // Use Foundry's getSpeaker helper to properly attribute the message
+    const speaker = ChatMessage.getSpeaker({ token, actor });
+
+    // Try to find the owning user for this actor to attribute the message properly
+    const ownerUserId = Object.entries(actor?.ownership ?? {})
+      .find(([_id, level]) => level === 3)?.[0]; // OWNER = 3
+    const ownerUser = ownerUserId ? game.users?.get(ownerUserId) : null;
+
+    // dnd5e item.use(config, dialog, message) - speaker goes in message config
+    await item.use(
+      {
+        // Use config
+        event: fastForwardEvent, // Fast-forward rolls
+      },
+      {
+        // Dialog config
+        configure: false,  // Skip configuration dialog
+      },
+      {
+        // Message config
+        create: true,
+        data: {
+          speaker,
+          user: ownerUser?.id ?? game.user?.id,
+        },
+      }
+    );
 
     sendMessage('USE_ABILITY_RESULT', {
       tokenId: payload.tokenId,
@@ -453,9 +643,18 @@ async function handleRollDice(payload: unknown): Promise<void> {
 
     // Optionally post to chat
     if (payload.postToChat) {
+      // Use Foundry's getSpeaker helper to properly attribute the message
+      const speaker = ChatMessage.getSpeaker({ token, actor });
+
+      // Try to find the owning user for this actor to attribute the message properly
+      const ownerUserId = Object.entries(actor?.ownership ?? {})
+        .find(([_id, level]) => level === 3)?.[0]; // OWNER = 3
+      const ownerUser = ownerUserId ? game.users?.get(ownerUserId) : null;
+
       await roll.toMessage({
-        speaker: { alias: actorName },
+        speaker,
         flavor: payload.label ?? `Dice Roll`,
+        user: ownerUser?.id ?? game.user?.id,
       });
     }
 
@@ -605,24 +804,56 @@ function cleanupPairedToken(tokenId: string): void {
 }
 
 // =============================================================================
-// TOKEN HUD (Shell)
+// TOKEN CONFIG (Shell)
 // =============================================================================
 
-function registerTokenHUD(): void {
-  Hooks.on('renderTokenHUD', (_app: unknown, html: JQuery, data: Record<string, unknown>) => {
-    const button = $(`
-      <div class="control-icon vtt-remote-hud-button" title="${game.i18n?.localize('VTT_REMOTE.Title') ?? 'Remote Control'}">
-        <i class="fas fa-mobile-alt"></i>
-      </div>
-    `);
+function registerTokenConfig(): void {
+  // Add "Remote Pairing" button to Token Config sheet header
+  Hooks.on('renderTokenConfig', (app: any, html: HTMLElement | JQuery, _data: any) => {
+    const token = app.token ?? app.document;
+    if (!token) return;
 
-    button.on('click', (event: Event) => {
+    // Handle both jQuery (v11) and HTMLElement (v13)
+    const element = html instanceof HTMLElement ? html : html[0];
+    const headerTitle = element.querySelector('.window-header .window-title');
+    if (!headerTitle) return;
+
+    // Create button
+    const button = document.createElement('a');
+    button.className = 'vtt-remote-config-btn';
+    button.title = game.i18n?.localize('VTT_REMOTE.Title') ?? 'Remote Control';
+    button.innerHTML = '<i class="fas fa-mobile-alt"></i>';
+
+    button.addEventListener('click', (event: Event) => {
       event.preventDefault();
       event.stopPropagation();
-      showPairingDialog(data);
+      showPairingDialog({
+        _id: token.id,
+        actorId: token.actorId,
+        name: token.name,
+      });
     });
 
-    html.find('.col.left').append(button);
+    headerTitle.after(button);
+  });
+
+  // Also keep context menu option as fallback
+  Hooks.on('getTokenContextOptions', (_html: any, options: any[]) => {
+    options.push({
+      name: game.i18n?.localize('VTT_REMOTE.Title') ?? 'Remote Control',
+      icon: '<i class="fas fa-mobile-alt"></i>',
+      condition: () => true,
+      callback: (tokens: any) => {
+        const token = tokens[0]?.document ?? tokens[0];
+        if (token) {
+          showPairingDialog({
+            _id: token.id,
+            actorId: token.actorId,
+            name: token.name,
+          });
+        }
+      },
+    });
   });
 }
 
@@ -719,3 +950,211 @@ Hooks.once('closeApplication', () => {
     relaySocket.close();
   }
 });
+
+// =============================================================================
+// PASSWORD MANAGEMENT (Shell)
+// =============================================================================
+
+/**
+ * Browser-compatible SHA-256 hash using SubtleCrypto.
+ */
+async function hashPasswordBrowser(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + salt);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Set a user's password (hashed and stored in world settings).
+ */
+async function setUserPassword(userId: string, password: string): Promise<void> {
+  const roomCode = ensureRoomCode();
+  const hash = await hashPasswordBrowser(password, roomCode);
+
+  const passwords = (game.settings?.get(MODULE_ID, 'userPasswords') as PasswordStore) ?? {};
+  const currentUserId = game.user?.id ?? '';
+
+  passwords[userId] = {
+    hash,
+    setBy: currentUserId,
+    setAt: Date.now(),
+  };
+
+  await game.settings?.set(MODULE_ID, 'userPasswords', passwords);
+  console.log(`${MODULE_ID} | Password set for user: ${userId}`);
+}
+
+/**
+ * Clear a user's password.
+ */
+async function clearUserPassword(userId: string): Promise<void> {
+  const passwords = (game.settings?.get(MODULE_ID, 'userPasswords') as PasswordStore) ?? {};
+
+  if (passwords[userId]) {
+    delete passwords[userId];
+    await game.settings?.set(MODULE_ID, 'userPasswords', passwords);
+    console.log(`${MODULE_ID} | Password cleared for user: ${userId}`);
+  }
+}
+
+/**
+ * Verify a user's password (compare hashes).
+ */
+function verifyUserPassword(userId: string, passwordHash: string): boolean {
+  const passwords = (game.settings?.get(MODULE_ID, 'userPasswords') as PasswordStore) ?? {};
+  const entry = passwords[userId];
+
+  if (!entry) {
+    return false;
+  }
+
+  // Direct hash comparison (phone already hashed with same salt)
+  return entry.hash === passwordHash;
+}
+
+// =============================================================================
+// LOGIN HANDLERS (Shell)
+// =============================================================================
+
+/**
+ * Handle LOGIN request from phone client.
+ */
+function handleLogin(payload: unknown): void {
+  if (!isLoginPayload(payload)) {
+    console.warn(`${MODULE_ID} | Invalid LOGIN payload:`, payload);
+    return;
+  }
+
+  const { username, passwordHash } = payload;
+
+  // Find user by name
+  const user = game.users?.find((u: any) => u.name === username);
+  if (!user) {
+    sendMessage('LOGIN_FAILED', { reason: 'user_not_found' });
+    console.log(`${MODULE_ID} | Login failed: user not found: ${username}`);
+    return;
+  }
+
+  // Check if user has a password set
+  const passwords = (game.settings?.get(MODULE_ID, 'userPasswords') as PasswordStore) ?? {};
+  if (!passwords[user.id]) {
+    sendMessage('LOGIN_FAILED', { reason: 'no_password_set' });
+    console.log(`${MODULE_ID} | Login failed: no password set for: ${username}`);
+    return;
+  }
+
+  // Verify password
+  if (!verifyUserPassword(user.id, passwordHash)) {
+    sendMessage('LOGIN_FAILED', { reason: 'invalid_credentials' });
+    console.log(`${MODULE_ID} | Login failed: invalid credentials for: ${username}`);
+    return;
+  }
+
+  // Get controllable tokens for this user
+  const isGM = user.isGM ?? false;
+  const scenes = getSceneData();
+  const availableTokens = getControllableTokens(user.id, isGM, scenes);
+
+  // Create authenticated session
+  const session: AuthenticatedSession = {
+    userId: user.id,
+    userName: user.name,
+    createdAt: Date.now(),
+  };
+  authenticatedSessions.set(user.id, session);
+
+  // Send success with token list
+  sendMessage('LOGIN_SUCCESS', {
+    userId: user.id,
+    userName: user.name,
+    availableTokens,
+  });
+
+  console.log(`${MODULE_ID} | Login successful for: ${username}, ${availableTokens.length} tokens available`);
+}
+
+/**
+ * Handle SELECT_TOKEN request from phone client.
+ */
+function handleSelectToken(payload: unknown): void {
+  if (!isSelectTokenPayload(payload)) {
+    console.warn(`${MODULE_ID} | Invalid SELECT_TOKEN payload:`, payload);
+    return;
+  }
+
+  const { tokenId, sceneId } = payload;
+
+  // Get token info from Foundry
+  const scene = game.scenes?.get(sceneId);
+  const token = scene?.tokens?.get(tokenId);
+  const actor = token?.actor;
+
+  if (!token) {
+    console.warn(`${MODULE_ID} | Token not found: ${tokenId}`);
+    return;
+  }
+
+  // Create a session in pairingSessions so move/ability handlers work
+  // Use a synthetic code based on tokenId to avoid collisions
+  const sessionCode = `login-${tokenId}`;
+  const session = {
+    code: sessionCode,
+    tokenId,
+    sceneId,
+    actorId: actor?.id ?? '',
+    createdAt: Date.now(),
+  };
+  pairingSessions.set(sessionCode, session);
+  console.log(`${MODULE_ID} | Created session for login:`, session);
+  console.log(`${MODULE_ID} | pairingSessions now has ${pairingSessions.size} entries`);
+
+  // Track this token for real-time updates
+  pairedTokens.add(tokenId);
+
+  // Send success
+  sendMessage('SELECT_TOKEN_SUCCESS', {
+    tokenId,
+    tokenName: token.name ?? 'Unknown Token',
+    actorName: actor?.name ?? '',
+  });
+
+  // Send initial actor info
+  const actorData = getActorPanelData(tokenId, sceneId);
+  if (actorData) {
+    sendMessage('ACTOR_INFO', actorData);
+  }
+
+  console.log(`${MODULE_ID} | Token selected: ${token.name} (session: ${sessionCode})`);
+}
+
+/**
+ * Get scene data in the format expected by getControllableTokens.
+ */
+function getSceneData(): SceneData[] {
+  const scenes: SceneData[] = [];
+
+  for (const scene of game.scenes ?? []) {
+    const tokens: SceneData['tokens'] = [];
+
+    for (const token of scene.tokens ?? []) {
+      const actor = token.actor;
+      tokens.push({
+        id: token.id,
+        name: token.name,
+        actorId: actor?.id ?? '',
+        img: token.texture?.src ?? token.img ?? '',
+        ownership: actor?.ownership ?? {},
+      });
+    }
+
+    scenes.push({
+      id: scene.id,
+      name: scene.name,
+      tokens,
+    });
+  }
+
+  return scenes;
+}

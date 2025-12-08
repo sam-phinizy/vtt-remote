@@ -32,6 +32,7 @@ var upgrader = websocket.Upgrader{
 
 func main() {
 	port := flag.Int("port", 8080, "HTTP server port")
+	hostname := flag.String("hostname", "", "Custom hostname for display (e.g., myserver.local)")
 	flag.Parse()
 
 	// Start embedded NATS server
@@ -68,7 +69,9 @@ func main() {
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("VTT Remote server starting:")
 	log.Printf("  Local:   http://localhost:%d", *port)
-	if ip := getLocalIP(); ip != "" {
+	if *hostname != "" {
+		log.Printf("  Network: http://%s:%d", *hostname, *port)
+	} else if ip := getLocalIP(); ip != "" {
 		log.Printf("  Network: http://%s:%d", ip, *port)
 	}
 

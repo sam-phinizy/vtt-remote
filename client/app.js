@@ -26,11 +26,18 @@
   let tokenName = null;
   let isConnected = false;
   let isPaired = false;
+  let isLoggedIn = false; // Password-based login state
   let lastMoveTime = 0;
   let reconnectAttempts = 0;
   let reconnectTimeout = null;
   let pendingPairingCode = null;
   let actorData = null; // Stores ActorPanelData for info panel
+
+  // Login state
+  let userId = null;
+  let userName = null;
+  let availableTokens = []; // Tokens available after login
+  let authMode = 'login'; // 'login' or 'pairing'
 
   // ==========================================================================
   // DOM ELEMENTS
@@ -81,6 +88,30 @@
 
   // Pending ability use (for confirmation)
   let pendingAbility = null;
+
+  // QR Scanner elements
+  const scanQrBtn = document.getElementById('scan-qr-btn');
+  const qrScannerModal = document.getElementById('qr-scanner-modal');
+  const closeScannerBtn = document.getElementById('close-scanner-btn');
+  let html5QrCode = null;
+
+  // Auth mode elements
+  const authTabs = document.querySelectorAll('.auth-tab');
+  const loginForm = document.getElementById('login-form');
+  const loginRoomCodeInput = document.getElementById('login-room-code');
+  const loginUsernameInput = document.getElementById('login-username');
+  const loginPasswordInput = document.getElementById('login-password');
+  const loginBtn = document.getElementById('login-btn');
+
+  // Token picker elements
+  const tokenPickerScreen = document.getElementById('token-picker-screen');
+  const tokenList = document.getElementById('token-list');
+  const pickerUsername = document.getElementById('picker-username');
+  const pickerLogoutBtn = document.getElementById('picker-logout-btn');
+  const noTokensMessage = document.getElementById('no-tokens-message');
+
+  // Switch token button
+  const switchTokenBtn = document.getElementById('switch-token-btn');
 
   // ==========================================================================
   // INITIALIZATION
@@ -137,10 +168,35 @@
       if (e.target === confirmDialog) hideConfirmDialog();
     });
 
+    // QR scanner buttons
+    scanQrBtn.addEventListener('click', openQrScanner);
+    closeScannerBtn.addEventListener('click', closeQrScanner);
+
+    // Auth mode tabs
+    authTabs.forEach((tab) => {
+      tab.addEventListener('click', () => switchAuthMode(tab.dataset.mode));
+    });
+
+    // Login form
+    loginForm.addEventListener('submit', handleLoginSubmit);
+
+    // Token picker
+    pickerLogoutBtn.addEventListener('click', logout);
+
+    // Switch token button
+    switchTokenBtn.addEventListener('click', showTokenPicker);
+
     // Restore room code from localStorage
     const savedRoomCode = localStorage.getItem('vtt-remote-room');
     if (savedRoomCode) {
       roomCodeInput.value = savedRoomCode;
+      loginRoomCodeInput.value = savedRoomCode;
+    }
+
+    // Restore username from localStorage
+    const savedUsername = localStorage.getItem('vtt-remote-username');
+    if (savedUsername) {
+      loginUsernameInput.value = savedUsername;
     }
 
     // Parse URL params (from QR code scan)
@@ -173,6 +229,75 @@
       setTimeout(() => {
         handlePairingSubmit(new Event('submit'));
       }, 100);
+    }
+  }
+
+  // ==========================================================================
+  // QR CODE SCANNER
+  // ==========================================================================
+
+  function openQrScanner() {
+    qrScannerModal.classList.remove('hidden');
+
+    // Initialize scanner if not already
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode('qr-reader');
+    }
+
+    // Start scanning with back camera preferred
+    html5QrCode.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+      },
+      onQrCodeSuccess,
+      () => {} // Ignore scan failures (normal during scanning)
+    ).catch((err) => {
+      console.error('Camera error:', err);
+      showToast('Camera access denied', 'error');
+      closeQrScanner();
+    });
+  }
+
+  function closeQrScanner() {
+    qrScannerModal.classList.add('hidden');
+
+    if (html5QrCode && html5QrCode.isScanning) {
+      html5QrCode.stop().catch(() => {});
+    }
+  }
+
+  function onQrCodeSuccess(decodedText) {
+    // Stop scanning immediately
+    closeQrScanner();
+    hapticFeedback(30);
+
+    // Parse the URL to extract room and code params
+    try {
+      const url = new URL(decodedText);
+      const urlRoom = url.searchParams.get('room');
+      const urlCode = url.searchParams.get('code');
+
+      if (urlRoom) {
+        roomCodeInput.value = urlRoom.toUpperCase();
+      }
+
+      if (urlCode) {
+        pairingCodeInput.value = urlCode;
+      }
+
+      // Auto-connect if both present
+      if (urlRoom && urlCode) {
+        setTimeout(() => {
+          handlePairingSubmit(new Event('submit'));
+        }, 100);
+      } else {
+        showToast('Scanned! Fill in remaining fields', 'success');
+      }
+    } catch {
+      // Not a URL, maybe just raw data - try to use as-is
+      showToast('Invalid QR code format', 'error');
     }
   }
 
@@ -253,6 +378,18 @@
 
       case 'PAIR_FAILED':
         handlePairFailed(payload);
+        break;
+
+      case 'LOGIN_SUCCESS':
+        handleLoginSuccess(payload);
+        break;
+
+      case 'LOGIN_FAILED':
+        handleLoginFailed(payload);
+        break;
+
+      case 'SELECT_TOKEN_SUCCESS':
+        handleSelectTokenSuccess(payload);
         break;
 
       case 'MOVE_ACK':
@@ -372,6 +509,228 @@
       actorData = payload.changes;
       renderInfoPanel();
     }
+  }
+
+  // ==========================================================================
+  // LOGIN HANDLERS
+  // ==========================================================================
+
+  function handleLoginSuccess(payload) {
+    isLoggedIn = true;
+    isConnected = true;
+    userId = payload.userId;
+    userName = payload.userName;
+    availableTokens = payload.availableTokens || [];
+
+    setConnecting(false);
+    showToast(`Welcome, ${userName}!`, 'success');
+
+    // Show token picker
+    showTokenPicker();
+  }
+
+  function handleLoginFailed(payload) {
+    setConnecting(false);
+
+    const reasons = {
+      user_not_found: 'Username not found',
+      no_password_set: 'No password set. Ask GM to set one.',
+      invalid_credentials: 'Invalid password',
+    };
+
+    const message = reasons[payload.reason] || 'Login failed';
+    showToast(message, 'error');
+  }
+
+  function handleSelectTokenSuccess(payload) {
+    isPaired = true;
+    tokenId = payload.tokenId;
+    tokenName = payload.tokenName || 'Token';
+
+    // Update UI
+    actorNameEl.textContent = tokenName;
+    updateConnectionStatus('connected');
+
+    // Switch to control screen
+    showScreen('control');
+    showToast(`Controlling ${tokenName}`, 'success');
+
+    // Haptic feedback
+    hapticFeedback(50);
+  }
+
+  // ==========================================================================
+  // AUTH MODE SWITCHING
+  // ==========================================================================
+
+  function switchAuthMode(mode) {
+    authMode = mode;
+
+    // Update tab active states
+    authTabs.forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.mode === mode);
+    });
+
+    // Show/hide forms
+    if (mode === 'login') {
+      loginForm.classList.remove('hidden');
+      pairingForm.classList.add('hidden');
+    } else {
+      loginForm.classList.add('hidden');
+      pairingForm.classList.remove('hidden');
+    }
+  }
+
+  // ==========================================================================
+  // LOGIN FORM HANDLING
+  // ==========================================================================
+
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+
+    const inputRoomCode = loginRoomCodeInput.value.trim().toUpperCase();
+    const username = loginUsernameInput.value.trim();
+    const password = loginPasswordInput.value;
+
+    if (!inputRoomCode || !username || !password) {
+      showToast('Please fill in all fields', 'error');
+      return;
+    }
+
+    roomCode = inputRoomCode;
+    localStorage.setItem('vtt-remote-room', roomCode);
+    localStorage.setItem('vtt-remote-username', username);
+
+    // Hash password with room code as salt
+    const passwordHash = await hashPassword(password, roomCode);
+
+    // Connect and send login
+    setConnecting(true);
+    showToast('Connecting...', '');
+
+    // Determine WebSocket URL
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      reconnectAttempts = 0;
+      showToast('Connected, logging in...', '');
+
+      // Send JOIN then LOGIN
+      sendMessage('JOIN', { room: roomCode });
+
+      // Small delay to ensure JOIN is processed first
+      setTimeout(() => {
+        sendMessage('LOGIN', { username, passwordHash });
+      }, 50);
+    };
+
+    socket.onmessage = handleSocketMessage;
+    socket.onclose = handleSocketClose;
+    socket.onerror = handleSocketError;
+  }
+
+  // ==========================================================================
+  // PASSWORD HASHING (SHA-256)
+  // ==========================================================================
+
+  async function hashPassword(password, salt) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + salt);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // ==========================================================================
+  // TOKEN PICKER
+  // ==========================================================================
+
+  function showTokenPicker() {
+    // Update header with username
+    pickerUsername.textContent = userName || 'Player';
+
+    // Render token list
+    renderTokenList();
+
+    // Show token picker screen
+    showScreen('token-picker');
+  }
+
+  function renderTokenList() {
+    tokenList.innerHTML = '';
+
+    if (availableTokens.length === 0) {
+      noTokensMessage.classList.remove('hidden');
+      return;
+    }
+
+    noTokensMessage.classList.add('hidden');
+
+    availableTokens.forEach((token) => {
+      const card = document.createElement('div');
+      card.className = 'token-card';
+      card.dataset.tokenId = token.tokenId;
+      card.dataset.sceneId = token.sceneId;
+
+      // Token image
+      const img = document.createElement('img');
+      img.src = token.img || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23555"/></svg>';
+      img.alt = token.name;
+
+      // Token name
+      const name = document.createElement('div');
+      name.className = 'token-name';
+      name.textContent = token.name;
+
+      // Scene name (if available)
+      if (token.sceneName) {
+        const scene = document.createElement('div');
+        scene.className = 'token-scene';
+        scene.textContent = token.sceneName;
+        card.appendChild(img);
+        card.appendChild(name);
+        card.appendChild(scene);
+      } else {
+        card.appendChild(img);
+        card.appendChild(name);
+      }
+
+      // Click handler
+      card.addEventListener('click', () => selectToken(token.tokenId, token.sceneId));
+
+      tokenList.appendChild(card);
+    });
+  }
+
+  function selectToken(selectedTokenId, sceneId) {
+    // Send SELECT_TOKEN message
+    sendMessage('SELECT_TOKEN', { tokenId: selectedTokenId, sceneId });
+    showToast('Selecting token...', '');
+  }
+
+  function logout() {
+    // Reset login state
+    isLoggedIn = false;
+    isPaired = false;
+    userId = null;
+    userName = null;
+    availableTokens = [];
+    tokenId = null;
+    tokenName = null;
+    actorData = null;
+
+    // Close socket
+    if (socket) {
+      socket.close();
+      socket = null;
+    }
+
+    // Return to auth screen
+    showScreen('pairing');
+    showToast('Logged out', '');
   }
 
   // ==========================================================================
@@ -730,12 +1089,15 @@
 
   function showScreen(screen) {
     pairingScreen.classList.toggle('active', screen === 'pairing');
+    tokenPickerScreen.classList.toggle('active', screen === 'token-picker');
     controlScreen.classList.toggle('active', screen === 'control');
   }
 
   function setConnecting(connecting) {
     connectBtn.disabled = connecting;
     connectBtn.textContent = connecting ? 'Connecting...' : 'Connect';
+    loginBtn.disabled = connecting;
+    loginBtn.textContent = connecting ? 'Connecting...' : 'Login';
   }
 
   function updateConnectionStatus(status) {
