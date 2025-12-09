@@ -24,7 +24,17 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest init:*)",
       "Bash(npx shadcn@latest add:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(rsync:*)",
+      "Bash(/Users/sphinizy/src/github.com/sam-phinizy/vtt-remote/ root@178.156.195.35:/opt/vtt-remote/)",
+      "Bash(ssh root@178.156.195.35 'cd /opt/vtt-remote/deploy && docker compose up -d --build')",
+      "Bash(curl:*)",
+      "Bash(ssh root@178.156.195.35 'docker logs vtt-relay && docker ps')",
+      "Bash(ssh root@178.156.195.35 'cd /opt/vtt-remote/deploy && docker compose up -d')",
+      "Bash(dig:*)",
+      "Bash(ssh root@178.156.195.35 'cat > /opt/vtt-remote/deploy/.env << EOF\nVTT_DOMAIN=remote.arcanegrimoire.com\nACME_EMAIL=admin@arcanegrimoire.com\nEOF\ncat /opt/vtt-remote/deploy/.env')",
+      "Bash(ssh root@178.156.195.35 'cat > /opt/vtt-remote/deploy/.env << EOF\nVTT_DOMAIN=remote.arcanegrimoire.com\nACME_EMAIL=sam@phin.tech\nEOF\ncat /opt/vtt-remote/deploy/.env')",
+      "Bash(ssh:*)"
     ],
     "deny": [],
     "ask": []

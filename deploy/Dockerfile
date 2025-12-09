@@ -15,7 +15,7 @@ COPY client-react/ ./
 RUN npm run build
 
 # Stage 2: Build Go server
-FROM golang:1.23-alpine AS server-builder
+FROM golang:1.24-alpine AS server-builder
 
 WORKDIR /build
 
@@ -32,8 +32,8 @@ COPY server/ ./
 # Copy built client into public/ for embedding
 COPY --from=client-builder /build/dist ./public/
 
-# Build binary (client is embedded via go:embed)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vtt-relay .
+# Tidy and build binary (client is embedded via go:embed)
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vtt-relay .
 
 # Stage 3: Runtime
 FROM alpine:3.19

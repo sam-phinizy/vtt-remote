@@ -12,13 +12,13 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: vtt-relay
+    profiles:
+      - standalone
     restart: unless-stopped
     ports:
-      - "8181:8181"
-    environment:
-      - PORT=8181
+      - "80:8080"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -55,18 +55,24 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: vtt-relay
+    container_name: vtt-relay-traefik
     profiles:
       - traefik
     restart: unless-stopped
-    environment:
-      - PORT=8181
+    ports:
+      # Direct access on 8080 for local HTTP Foundry instances (ws://)
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.vtt.rule=Host(`${VTT_DOMAIN:-vtt-remote.example.com}`)"
       - "traefik.http.routers.vtt.entrypoints=websecure"
       - "traefik.http.routers.vtt.tls.certresolver=letsencrypt"
-      - "traefik.http.services.vtt.loadbalancer.server.port=8181"
+      - "traefik.http.services.vtt.loadbalancer.server.port=8080"
 
 volumes:
   traefik-certs:

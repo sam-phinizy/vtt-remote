@@ -57,11 +57,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to access public directory: %v", err)
 	}
-	mux.Handle("/", http.FileServer(http.FS(publicContent)))
 
-	// Serve React client from filesystem (for development)
-	// Build with: cd client-react && npm run build
-	mux.Handle("/v2/", http.StripPrefix("/v2/", http.FileServer(http.Dir("../client-react/dist"))))
+	// Wrap file server to set proper MIME types
+	fileServer := http.FileServer(http.FS(publicContent))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set correct MIME types for static assets
+		path := r.URL.Path
+		switch {
+		case len(path) > 3 && path[len(path)-3:] == ".js":
+			w.Header().Set("Content-Type", "application/javascript")
+		case len(path) > 4 && path[len(path)-4:] == ".css":
+			w.Header().Set("Content-Type", "text/css")
+		case len(path) > 5 && path[len(path)-5:] == ".json":
+			w.Header().Set("Content-Type", "application/json")
+		case len(path) > 4 && path[len(path)-4:] == ".svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	// WebSocket endpoint for relay
 	mux.HandleFunc("/ws", handleWebSocket)

@@ -303,20 +303,43 @@ const RELAY_PORT = 8181;
  */
 function getRelayUrl(): string {
   const configured = game.settings?.get(MODULE_ID, 'relayServerUrl') as string;
+  const isSecure = window.location.protocol === 'https:';
+
   if (configured) {
-    // Normalize: add ws:// if missing, add /ws path if missing
-    let url = configured;
-    if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
-      url = `ws://${url}`;
+    let url = configured.trim();
+
+    // If user entered full URL with protocol, use as-is (just ensure /ws path)
+    if (url.startsWith('ws://') || url.startsWith('wss://')) {
+      if (!url.endsWith('/ws')) {
+        url = url.replace(/\/$/, '') + '/ws';
+      }
+      return url;
     }
+
+    // Strip any accidental protocol prefixes (http://, https://)
+    url = url.replace(/^https?:\/\//, '');
+
+    // Add appropriate WebSocket protocol based on Foundry's protocol
+    const protocol = isSecure ? 'wss://' : 'ws://';
+
+    // If HTTP (insecure) and no port specified, add :8080 for plain WS
+    if (!isSecure && !url.includes(':')) {
+      url = `${url}:8080`;
+    }
+
+    url = `${protocol}${url}`;
+
+    // Ensure /ws path
     if (!url.endsWith('/ws')) {
-      url = `${url}/ws`;
+      url = url.replace(/\/$/, '') + '/ws';
     }
     return url;
   }
   // Auto-detect: use same hostname as Foundry, default relay port
+  // Match protocol to Foundry's protocol
   const hostname = window.location.hostname || 'localhost';
-  return `ws://${hostname}:${RELAY_PORT}/ws`;
+  const protocol = isSecure ? 'wss://' : 'ws://';
+  return `${protocol}${hostname}:${RELAY_PORT}/ws`;
 }
 
 /**
