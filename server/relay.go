@@ -21,13 +21,23 @@ const (
 // roomCodeRegex validates room codes: 4-8 alphanumeric characters.
 var roomCodeRegex = regexp.MustCompile(`^[a-zA-Z0-9]{4,8}$`)
 
+// ClientType identifies whether a client is Foundry or a phone.
+type ClientType string
+
+const (
+	ClientTypeUnknown ClientType = ""
+	ClientTypeFoundry ClientType = "foundry"
+	ClientTypePhone   ClientType = "phone"
+)
+
 // Client represents a connected WebSocket client.
 type Client struct {
-	conn     *websocket.Conn
-	room     string
-	sub      *nats.Subscription
-	sendChan chan []byte
-	relay    *Relay
+	conn       *websocket.Conn
+	room       string
+	clientType ClientType
+	sub        *nats.Subscription
+	sendChan   chan []byte
+	relay      *Relay
 }
 
 // Relay manages the NATS connection and room subscriptions.
@@ -58,9 +68,10 @@ func (r *Relay) Close() {
 // HandleClient processes a new WebSocket connection through its lifecycle.
 func (r *Relay) HandleClient(conn *websocket.Conn) {
 	client := &Client{
-		conn:     conn,
-		sendChan: make(chan []byte, 64),
-		relay:    r,
+		conn:       conn,
+		clientType: ClientTypeUnknown,
+		sendChan:   make(chan []byte, 64),
+		relay:      r,
 	}
 
 	// Wait for JOIN message first
@@ -71,12 +82,19 @@ func (r *Relay) HandleClient(conn *websocket.Conn) {
 
 	// Register client in room
 	r.addToRoom(client)
-	defer r.removeFromRoom(client)
+	defer func() {
+		r.removeFromRoom(client)
+		// Broadcast status change when client leaves
+		r.broadcastRoomStatus(client.room)
+	}()
 
 	log.Printf("Client joined room %s", client.room)
 
 	// Start writer goroutine
 	go client.writePump()
+
+	// Send initial room status to this client
+	client.sendRoomStatus()
 
 	// Read messages and relay to NATS
 	client.readPump()
@@ -135,6 +153,24 @@ func (c *Client) waitForJoin() error {
 	return nil
 }
 
+// sendRoomStatus sends current room status to this client.
+func (c *Client) sendRoomStatus() {
+	foundryConnected := c.relay.isFoundryConnected(c.room)
+	msg, err := MakeEnvelope(TypeRoomStatus, RoomStatusPayload{
+		FoundryConnected: foundryConnected,
+	})
+	if err != nil {
+		log.Printf("Failed to create ROOM_STATUS message: %v", err)
+		return
+	}
+
+	select {
+	case c.sendChan <- msg:
+	default:
+		// Channel full, skip
+	}
+}
+
 // readPump reads messages from WebSocket and publishes to NATS.
 func (c *Client) readPump() {
 	defer func() {
@@ -157,8 +193,15 @@ func (c *Client) readPump() {
 		}
 
 		// Validate it's a proper envelope before relaying
-		if _, err := ParseEnvelope(data); err != nil {
+		env, err := ParseEnvelope(data)
+		if err != nil {
 			log.Printf("Invalid message from client: %v", err)
+			continue
+		}
+
+		// Handle IDENTIFY locally (don't relay to NATS)
+		if env.Type == TypeIdentify {
+			c.handleIdentify(env.Payload)
 			continue
 		}
 
@@ -167,6 +210,34 @@ func (c *Client) readPump() {
 			log.Printf("NATS publish error: %v", err)
 			return
 		}
+	}
+}
+
+// handleIdentify processes an IDENTIFY message and updates client type.
+func (c *Client) handleIdentify(payload json.RawMessage) {
+	var p IdentifyPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		log.Printf("Invalid IDENTIFY payload: %v", err)
+		return
+	}
+
+	oldType := c.clientType
+
+	switch p.ClientType {
+	case "foundry":
+		c.clientType = ClientTypeFoundry
+	case "phone":
+		c.clientType = ClientTypePhone
+	default:
+		log.Printf("Unknown client type: %s", p.ClientType)
+		return
+	}
+
+	log.Printf("Client identified as %s in room %s", c.clientType, c.room)
+
+	// If client type changed, broadcast new room status
+	if oldType != c.clientType {
+		c.relay.broadcastRoomStatus(c.room)
 	}
 }
 
@@ -230,4 +301,60 @@ func (r *Relay) ClientCount() int {
 		count += len(clients)
 	}
 	return count
+}
+
+// isFoundryConnected checks if a Foundry client is connected to a room.
+func (r *Relay) isFoundryConnected(room string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	clients, ok := r.rooms[room]
+	if !ok {
+		return false
+	}
+
+	for client := range clients {
+		if client.clientType == ClientTypeFoundry {
+			return true
+		}
+	}
+	return false
+}
+
+// broadcastRoomStatus sends ROOM_STATUS to all clients in a room.
+func (r *Relay) broadcastRoomStatus(room string) {
+	r.mu.RLock()
+	clients, ok := r.rooms[room]
+	if !ok {
+		r.mu.RUnlock()
+		return
+	}
+
+	foundryConnected := false
+	for client := range clients {
+		if client.clientType == ClientTypeFoundry {
+			foundryConnected = true
+			break
+		}
+	}
+	r.mu.RUnlock()
+
+	msg, err := MakeEnvelope(TypeRoomStatus, RoomStatusPayload{
+		FoundryConnected: foundryConnected,
+	})
+	if err != nil {
+		log.Printf("Failed to create ROOM_STATUS message: %v", err)
+		return
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for client := range clients {
+		select {
+		case client.sendChan <- msg:
+		default:
+			// Channel full, skip
+		}
+	}
 }

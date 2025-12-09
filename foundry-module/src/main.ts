@@ -27,6 +27,7 @@ import {
   isUseAbilityPayload,
   isRollDicePayload,
   isLoginPayload,
+  isLoginWithTokenPayload,
   isSelectTokenPayload,
   type PairingSession,
   // Pairing
@@ -172,6 +173,22 @@ interface AuthenticatedSession {
 // Map from userId to authenticated session
 const authenticatedSessions = new Map<string, AuthenticatedSession>();
 
+// Session token storage (persisted in world settings)
+interface SessionToken {
+  token: string;
+  userId: string;
+  userName: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+interface SessionTokenStore {
+  [token: string]: SessionToken;
+}
+
+// Token expiry: 30 days
+const SESSION_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 // WebSocket connection to relay server
 let relaySocket: WebSocket | null = null;
 
@@ -243,6 +260,15 @@ function registerSettings(): void {
     config: false, // Hidden from settings UI
     type: Object,
     default: {} as PasswordStore,
+  });
+
+  // Session token storage - not visible in settings UI
+  game.settings?.register(MODULE_ID, 'sessionTokens', {
+    name: 'Session Tokens',
+    scope: 'world',
+    config: false, // Hidden from settings UI
+    type: Object,
+    default: {} as SessionTokenStore,
   });
 
   // Menu for password management
@@ -319,6 +345,11 @@ function connectToRelay(): void {
     // Send JOIN message
     const roomCode = ensureRoomCode();
     sendMessage('JOIN', { room: roomCode });
+
+    // Identify as Foundry client so server can track room status
+    setTimeout(() => {
+      sendMessage('IDENTIFY', { clientType: 'foundry' });
+    }, 50);
   };
 
   relaySocket.onmessage = (event) => {
@@ -374,6 +405,9 @@ function handleMessage(data: string): void {
       break;
     case 'login':
       handleLogin(payload);
+      break;
+    case 'loginWithToken':
+      handleLoginWithToken(payload);
       break;
     case 'selectToken':
       handleSelectToken(payload);
@@ -1015,13 +1049,88 @@ function verifyUserPassword(userId: string, passwordHash: string): boolean {
 }
 
 // =============================================================================
+// SESSION TOKEN MANAGEMENT (Shell)
+// =============================================================================
+
+/**
+ * Generate a cryptographically random session token.
+ */
+function generateSessionToken(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Create and store a new session token for a user.
+ */
+async function createSessionToken(userId: string, userName: string): Promise<string> {
+  const tokens = (game.settings?.get(MODULE_ID, 'sessionTokens') as SessionTokenStore) ?? {};
+  const now = Date.now();
+
+  // Clean up expired tokens while we're here
+  for (const [token, data] of Object.entries(tokens)) {
+    if (data.expiresAt < now) {
+      delete tokens[token];
+    }
+  }
+
+  // Generate new token
+  const token = generateSessionToken();
+  tokens[token] = {
+    token,
+    userId,
+    userName,
+    createdAt: now,
+    expiresAt: now + SESSION_TOKEN_TTL_MS,
+  };
+
+  await game.settings?.set(MODULE_ID, 'sessionTokens', tokens);
+  console.log(`${MODULE_ID} | Session token created for user: ${userName}`);
+
+  return token;
+}
+
+/**
+ * Validate a session token and return user info if valid.
+ */
+function validateSessionToken(token: string): SessionToken | null {
+  const tokens = (game.settings?.get(MODULE_ID, 'sessionTokens') as SessionTokenStore) ?? {};
+  const entry = tokens[token];
+
+  if (!entry) {
+    return null;
+  }
+
+  // Check expiry
+  if (entry.expiresAt < Date.now()) {
+    return null;
+  }
+
+  return entry;
+}
+
+// Expose revokeSessionToken for GM use via console
+// Usage: game.modules.get('vtt-remote').api.revokeSessionToken(token)
+(window as any).vttRemoteApi = {
+  revokeSessionToken: async (token: string): Promise<void> => {
+    const tokens = (game.settings?.get(MODULE_ID, 'sessionTokens') as SessionTokenStore) ?? {};
+    if (tokens[token]) {
+      delete tokens[token];
+      await game.settings?.set(MODULE_ID, 'sessionTokens', tokens);
+      console.log(`${MODULE_ID} | Session token revoked`);
+    }
+  },
+};
+
+// =============================================================================
 // LOGIN HANDLERS (Shell)
 // =============================================================================
 
 /**
  * Handle LOGIN request from phone client.
  */
-function handleLogin(payload: unknown): void {
+async function handleLogin(payload: unknown): Promise<void> {
   if (!isLoginPayload(payload)) {
     console.warn(`${MODULE_ID} | Invalid LOGIN payload:`, payload);
     return;
@@ -1065,14 +1174,69 @@ function handleLogin(payload: unknown): void {
   };
   authenticatedSessions.set(user.id, session);
 
-  // Send success with token list
+  // Generate session token for "remember me"
+  const sessionToken = await createSessionToken(user.id, user.name);
+
+  // Send success with token list and session token
   sendMessage('LOGIN_SUCCESS', {
     userId: user.id,
     userName: user.name,
+    sessionToken,
     availableTokens,
   });
 
   console.log(`${MODULE_ID} | Login successful for: ${username}, ${availableTokens.length} tokens available`);
+}
+
+/**
+ * Handle LOGIN_WITH_TOKEN request from phone client.
+ */
+function handleLoginWithToken(payload: unknown): void {
+  if (!isLoginWithTokenPayload(payload)) {
+    console.warn(`${MODULE_ID} | Invalid LOGIN_WITH_TOKEN payload:`, payload);
+    return;
+  }
+
+  const { sessionToken } = payload;
+
+  // Validate the session token
+  const tokenData = validateSessionToken(sessionToken);
+  if (!tokenData) {
+    sendMessage('LOGIN_FAILED', { reason: 'invalid_token' });
+    console.log(`${MODULE_ID} | Token login failed: invalid or expired token`);
+    return;
+  }
+
+  // Verify user still exists
+  const user = game.users?.get(tokenData.userId);
+  if (!user) {
+    sendMessage('LOGIN_FAILED', { reason: 'user_not_found' });
+    console.log(`${MODULE_ID} | Token login failed: user no longer exists`);
+    return;
+  }
+
+  // Get controllable tokens for this user
+  const isGM = user.isGM ?? false;
+  const scenes = getSceneData();
+  const availableTokens = getControllableTokens(user.id, isGM, scenes);
+
+  // Create authenticated session
+  const session: AuthenticatedSession = {
+    userId: user.id,
+    userName: user.name,
+    createdAt: Date.now(),
+  };
+  authenticatedSessions.set(user.id, session);
+
+  // Send success with same token (still valid)
+  sendMessage('LOGIN_SUCCESS', {
+    userId: user.id,
+    userName: user.name,
+    sessionToken,
+    availableTokens,
+  });
+
+  console.log(`${MODULE_ID} | Token login successful for: ${user.name}, ${availableTokens.length} tokens available`);
 }
 
 /**

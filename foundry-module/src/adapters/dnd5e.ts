@@ -5,6 +5,16 @@
 
 import type { Ability, AbilityCategory, ActorPanelData, Resource, Stat, SystemAdapter } from './types';
 
+/**
+ * Convert a relative Foundry path to an absolute URL.
+ * This is needed for the phone client to load images from Foundry.
+ */
+function toAbsoluteUrl(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  if (path.startsWith('http')) return path; // Already absolute
+  return `${window.location.origin}/${path.replace(/^\//, '')}`;
+}
+
 // Type definitions for dnd5e actor structure (simplified)
 interface Dnd5eItem {
   id: string;
@@ -160,7 +170,7 @@ function extractAbilities(items: Dnd5eItem[]): Ability[] {
       id: item.id,
       name: item.name,
       category: getAbilityCategory(item.type),
-      img: item.img,
+      img: toAbsoluteUrl(item.img),
     };
 
     // Add uses if present
@@ -177,8 +187,10 @@ function extractAbilities(items: Dnd5eItem[]): Ability[] {
       ability.prepared = isSpellPrepared(item);
     }
 
-    // Add description snippet
+    // Add description snippet for list view
     ability.description = extractDescriptionSnippet(item.system.description?.value);
+    // Add full HTML description for info modal
+    ability.fullDescription = item.system.description?.value;
 
     abilities.push(ability);
   }
@@ -266,7 +278,7 @@ export const dnd5eAdapter: SystemAdapter = {
     return {
       tokenId: t.id,
       name: t.name,
-      portrait: a.img,
+      portrait: toAbsoluteUrl(a.img),
       resources,
       stats,
       conditions,

@@ -2,14 +2,14 @@
   "name": "VTT Remote",
   "short_name": "VTT Remote",
   "description": "Phone-based remote control for Foundry VTT tokens",
-  "start_url": "/",
+  "start_url": "/v2/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#e94560",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/assets/icon.svg",
+      "src": "/v2/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

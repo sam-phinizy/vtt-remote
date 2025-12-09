@@ -4,7 +4,7 @@ version: '3'
 vars:
   DIST_DIR: dist
   SERVER_DIR: server
-  CLIENT_DIR: client
+  CLIENT_DIR: client-react
   MODULE_DIR: foundry-module
   # Foundry data path - override with FOUNDRY_DATA env var
   FOUNDRY_DATA: '{{.FOUNDRY_DATA | default "/Users/sphinizy/foundrydata/Data"}}'
@@ -19,18 +19,42 @@ tasks:
     deps: [build:server, build:module]
 
   # ================================
-  # Client (Web Remote)
+  # Client (React)
   # ================================
 
-  build:client:
-    desc: Copy client files to server/public for embedding
+  install:client:
+    desc: Install client npm dependencies
+    dir: '{{.CLIENT_DIR}}'
     cmds:
-      - rm -rf {{.SERVER_DIR}}/public/*
-      - cp -r {{.CLIENT_DIR}}/* {{.SERVER_DIR}}/public/
+      - npm install
     sources:
-      - '{{.CLIENT_DIR}}/**/*'
+      - '{{.CLIENT_DIR}}/package.json'
+      - '{{.CLIENT_DIR}}/package-lock.json'
+    generates:
+      - '{{.CLIENT_DIR}}/node_modules/.package-lock.json'
+
+  build:client:
+    desc: Build React client and copy to server/public
+    dir: '{{.CLIENT_DIR}}'
+    deps: [install:client]
+    cmds:
+      - npm run build
+      - rm -rf ../{{.SERVER_DIR}}/public/*
+      - cp -r dist/* ../{{.SERVER_DIR}}/public/
+    sources:
+      - '{{.CLIENT_DIR}}/src/**/*'
+      - '{{.CLIENT_DIR}}/index.html'
+      - '{{.CLIENT_DIR}}/vite.config.ts'
+      - '{{.CLIENT_DIR}}/tsconfig*.json'
     generates:
       - '{{.SERVER_DIR}}/public/**/*'
+
+  dev:client:
+    desc: Run client dev server with HMR
+    dir: '{{.CLIENT_DIR}}'
+    deps: [install:client]
+    cmds:
+      - npm run dev
 
   # ================================
   # Server (Go Relay)

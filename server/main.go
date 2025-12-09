@@ -59,6 +59,10 @@ func main() {
 	}
 	mux.Handle("/", http.FileServer(http.FS(publicContent)))
 
+	// Serve React client from filesystem (for development)
+	// Build with: cd client-react && npm run build
+	mux.Handle("/v2/", http.StripPrefix("/v2/", http.FileServer(http.Dir("../client-react/dist"))))
+
 	// WebSocket endpoint for relay
 	mux.HandleFunc("/ws", handleWebSocket)
 

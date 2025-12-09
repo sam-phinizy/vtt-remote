@@ -1,8 +1,21 @@
 # VTT Remote Relay Server
 # Multi-stage build for minimal image size
 
-# Build stage
-FROM golang:1.21-alpine AS builder
+# Stage 1: Build React client
+FROM node:20-alpine AS client-builder
+
+WORKDIR /build
+
+# Copy package files for caching
+COPY client-react/package.json client-react/package-lock.json ./
+RUN npm ci
+
+# Copy source and build
+COPY client-react/ ./
+RUN npm run build
+
+# Stage 2: Build Go server
+FROM golang:1.23-alpine AS server-builder
 
 WORKDIR /build
 
@@ -13,13 +26,16 @@ RUN apk add --no-cache git
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 
-# Copy source
+# Copy server source
 COPY server/ ./
 
-# Build binary
+# Copy built client into public/ for embedding
+COPY --from=client-builder /build/dist ./public/
+
+# Build binary (client is embedded via go:embed)
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vtt-relay .
 
-# Runtime stage
+# Stage 3: Runtime
 FROM alpine:3.19
 
 WORKDIR /app
@@ -27,11 +43,8 @@ WORKDIR /app
 # Install ca-certificates for HTTPS (if needed)
 RUN apk add --no-cache ca-certificates
 
-# Copy binary from builder
-COPY --from=builder /build/vtt-relay .
-
-# Copy client files for embedded serving
-COPY client/ ./public/
+# Copy binary from builder (client is embedded)
+COPY --from=server-builder /build/vtt-relay .
 
 # Create non-root user
 RUN adduser -D -u 1000 vttremote

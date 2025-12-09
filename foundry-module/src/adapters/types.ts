@@ -44,8 +44,10 @@ export interface Ability {
   // Spell-specific
   spellLevel?: number;
   prepared?: boolean;
-  // Description snippet for UI
+  // Description snippet for ability list UI
   description?: string;
+  // Full HTML description for info modal
+  fullDescription?: string;
 }
 
 /**

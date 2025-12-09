@@ -20,7 +20,11 @@
       "Bash(npm run build:*)",
       "Bash(go test:*)",
       "Bash(ls:*)",
-      "Bash(task link:*)"
+      "Bash(task link:*)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

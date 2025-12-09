@@ -7,6 +7,8 @@ type MessageType string
 
 const (
 	TypeJoin           MessageType = "JOIN"
+	TypeIdentify       MessageType = "IDENTIFY"
+	TypeRoomStatus     MessageType = "ROOM_STATUS"
 	TypePair           MessageType = "PAIR"
 	TypePairSuccess    MessageType = "PAIR_SUCCESS"
 	TypePairFailed     MessageType = "PAIR_FAILED"
@@ -25,6 +27,16 @@ type Envelope struct {
 // JoinPayload contains the room code for joining.
 type JoinPayload struct {
 	Room string `json:"room"`
+}
+
+// IdentifyPayload identifies the client type.
+type IdentifyPayload struct {
+	ClientType string `json:"clientType"` // "foundry" or "phone"
+}
+
+// RoomStatusPayload contains room connection status.
+type RoomStatusPayload struct {
+	FoundryConnected bool `json:"foundryConnected"`
 }
 
 // PairPayload contains the pairing code.

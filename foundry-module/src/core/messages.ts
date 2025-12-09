@@ -11,6 +11,7 @@ export type MessageType =
   | 'PAIR_SUCCESS'
   | 'PAIR_FAILED'
   | 'LOGIN'
+  | 'LOGIN_WITH_TOKEN'
   | 'LOGIN_SUCCESS'
   | 'LOGIN_FAILED'
   | 'SELECT_TOKEN'
@@ -56,6 +57,10 @@ export interface LoginPayload {
   passwordHash: string; // SHA256(password + roomCode)
 }
 
+export interface LoginWithTokenPayload {
+  sessionToken: string;
+}
+
 export interface LoginTokenInfo {
   tokenId: string;
   sceneId: string;
@@ -68,11 +73,12 @@ export interface LoginTokenInfo {
 export interface LoginSuccessPayload {
   userId: string;
   userName: string;
+  sessionToken: string; // For "remember me" - store and use for future logins
   availableTokens: LoginTokenInfo[];
 }
 
 export interface LoginFailedPayload {
-  reason: 'invalid_credentials' | 'no_password_set' | 'user_not_found';
+  reason: 'invalid_credentials' | 'no_password_set' | 'user_not_found' | 'invalid_token' | 'token_expired';
 }
 
 export interface SelectTokenPayload {
@@ -144,6 +150,7 @@ export type HandlerType =
   | 'pairSuccess'
   | 'pairFailed'
   | 'login'
+  | 'loginWithToken'
   | 'loginSuccess'
   | 'loginFailed'
   | 'selectToken'
@@ -199,6 +206,7 @@ export function routeMessage(msg: Envelope): RouteResult {
     PAIR_SUCCESS: 'pairSuccess',
     PAIR_FAILED: 'pairFailed',
     LOGIN: 'login',
+    LOGIN_WITH_TOKEN: 'loginWithToken',
     LOGIN_SUCCESS: 'loginSuccess',
     LOGIN_FAILED: 'loginFailed',
     SELECT_TOKEN: 'selectToken',
@@ -296,6 +304,18 @@ export function isLoginPayload(payload: unknown): payload is LoginPayload {
     'passwordHash' in payload &&
     typeof (payload as LoginPayload).username === 'string' &&
     typeof (payload as LoginPayload).passwordHash === 'string'
+  );
+}
+
+/**
+ * Type guard for LoginWithTokenPayload.
+ */
+export function isLoginWithTokenPayload(payload: unknown): payload is LoginWithTokenPayload {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'sessionToken' in payload &&
+    typeof (payload as LoginWithTokenPayload).sessionToken === 'string'
   );
 }
 
