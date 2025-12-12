@@ -1,6 +1,6 @@
 module github.com/sam-phinizy/vtt-remote/server
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/gorilla/websocket v1.5.3

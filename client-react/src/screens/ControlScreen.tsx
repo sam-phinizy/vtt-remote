@@ -5,6 +5,7 @@ import { useGameStore } from '@/stores/gameStore';
 import { DPad } from '@/components/DPad';
 import { DiceRoller } from '@/components/DiceRoller';
 import { ActorInfo } from '@/components/ActorInfo';
+import { QuickActions } from '@/components/QuickActions';
 
 export function ControlScreen() {
   const { tokenName, disconnect, setScreen, isLoggedIn, isConnected } =
@@ -76,7 +77,8 @@ export function ControlScreen() {
           <TabsTrigger value="info">Info</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dpad" className="flex-1 flex items-center justify-center p-4 mt-0">
+        <TabsContent value="dpad" className="flex-1 flex flex-col items-center justify-center p-4 mt-0">
+          <QuickActions />
           <DPad />
         </TabsContent>
 

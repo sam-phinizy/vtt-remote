@@ -34,7 +34,9 @@
       "Bash(dig:*)",
       "Bash(ssh root@178.156.195.35 'cat > /opt/vtt-remote/deploy/.env << EOF\nVTT_DOMAIN=remote.arcanegrimoire.com\nACME_EMAIL=admin@arcanegrimoire.com\nEOF\ncat /opt/vtt-remote/deploy/.env')",
       "Bash(ssh root@178.156.195.35 'cat > /opt/vtt-remote/deploy/.env << EOF\nVTT_DOMAIN=remote.arcanegrimoire.com\nACME_EMAIL=sam@phin.tech\nEOF\ncat /opt/vtt-remote/deploy/.env')",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(task deploy:*)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": [],
     "ask": []
