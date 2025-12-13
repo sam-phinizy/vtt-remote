@@ -1,9 +1,8 @@
-package main
+package relay
 
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"regexp"
 	"sync"
 
@@ -13,13 +12,18 @@ import (
 
 // WebSocket close codes for protocol errors.
 const (
-	CloseProtocolError  = 4001
-	CloseInvalidRoom    = 4002
+	CloseProtocolError   = 4001
+	CloseInvalidRoom     = 4002
 	CloseSubscribeFailed = 4003
 )
 
 // roomCodeRegex validates room codes: 4-8 alphanumeric characters.
 var roomCodeRegex = regexp.MustCompile(`^[a-zA-Z0-9]{4,8}$`)
+
+// ValidateRoomCode checks if a room code is valid.
+func ValidateRoomCode(code string) bool {
+	return roomCodeRegex.MatchString(code)
+}
 
 // ClientType identifies whether a client is Foundry or a phone.
 type ClientType string
@@ -30,39 +34,74 @@ const (
 	ClientTypePhone   ClientType = "phone"
 )
 
+// LogLevel represents log severity.
+type LogLevel string
+
+const (
+	LogInfo  LogLevel = "info"
+	LogWarn  LogLevel = "warn"
+	LogError LogLevel = "error"
+)
+
+// Config holds relay configuration.
+type Config struct {
+	NatsURL string
+	OnLog   func(level LogLevel, message string) // Optional log callback
+}
+
+// Stats contains relay statistics.
+type Stats struct {
+	RoomCount    int
+	ClientCount  int
+	FoundryCount int
+	PhoneCount   int
+}
+
 // Client represents a connected WebSocket client.
 type Client struct {
 	conn       *websocket.Conn
 	room       string
-	clientType ClientType
 	sub        *nats.Subscription
 	sendChan   chan []byte
 	relay      *Relay
+
+	mu         sync.RWMutex
+	clientType ClientType
+	closed     bool // true when sendChan is closed
 }
 
 // Relay manages the NATS connection and room subscriptions.
 type Relay struct {
-	nc      *nats.Conn
-	mu      sync.RWMutex
-	rooms   map[string]map[*Client]struct{} // room -> set of clients
+	nc     *nats.Conn
+	mu     sync.RWMutex
+	rooms  map[string]map[*Client]struct{} // room -> set of clients
+	config Config
 }
 
 // NewRelay creates a relay connected to the given NATS URL.
-func NewRelay(natsURL string) (*Relay, error) {
-	nc, err := nats.Connect(natsURL)
+func NewRelay(cfg Config) (*Relay, error) {
+	nc, err := nats.Connect(cfg.NatsURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
 	return &Relay{
-		nc:    nc,
-		rooms: make(map[string]map[*Client]struct{}),
+		nc:     nc,
+		rooms:  make(map[string]map[*Client]struct{}),
+		config: cfg,
 	}, nil
 }
 
 // Close shuts down the NATS connection.
 func (r *Relay) Close() {
 	r.nc.Close()
+}
+
+// log sends a log message to the configured callback (if any).
+func (r *Relay) log(level LogLevel, format string, args ...any) {
+	if r.config.OnLog != nil {
+		r.config.OnLog(level, fmt.Sprintf(format, args...))
+	}
 }
 
 // HandleClient processes a new WebSocket connection through its lifecycle.
@@ -76,7 +115,7 @@ func (r *Relay) HandleClient(conn *websocket.Conn) {
 
 	// Wait for JOIN message first
 	if err := client.waitForJoin(); err != nil {
-		log.Printf("Client failed to join: %v", err)
+		r.log(LogWarn, "Client failed to join: %v", err)
 		return
 	}
 
@@ -88,7 +127,7 @@ func (r *Relay) HandleClient(conn *websocket.Conn) {
 		r.broadcastRoomStatus(client.room)
 	}()
 
-	log.Printf("Client joined room %s", client.room)
+	r.log(LogInfo, "Client joined room %s", client.room)
 
 	// Start writer goroutine
 	go client.writePump()
@@ -124,9 +163,9 @@ func (c *Client) waitForJoin() error {
 		return fmt.Errorf("payload parse error: %w", err)
 	}
 
-	// Normalize room code to uppercase
+	// Validate room code
 	room := payload.Room
-	if !roomCodeRegex.MatchString(room) {
+	if !ValidateRoomCode(room) {
 		c.closeWithCode(CloseInvalidRoom, "Invalid room code format")
 		return fmt.Errorf("invalid room code: %s", room)
 	}
@@ -141,7 +180,7 @@ func (c *Client) waitForJoin() error {
 		case c.sendChan <- msg.Data:
 		default:
 			// Channel full, drop message (client too slow)
-			log.Printf("Dropping message for slow client in room %s", c.room)
+			c.relay.log(LogWarn, "Dropping message for slow client in room %s", c.room)
 		}
 	})
 	if err != nil {
@@ -160,15 +199,11 @@ func (c *Client) sendRoomStatus() {
 		FoundryConnected: foundryConnected,
 	})
 	if err != nil {
-		log.Printf("Failed to create ROOM_STATUS message: %v", err)
+		c.relay.log(LogError, "Failed to create ROOM_STATUS message: %v", err)
 		return
 	}
 
-	select {
-	case c.sendChan <- msg:
-	default:
-		// Channel full, skip
-	}
+	c.trySend(msg)
 }
 
 // readPump reads messages from WebSocket and publishes to NATS.
@@ -177,6 +212,7 @@ func (c *Client) readPump() {
 		if c.sub != nil {
 			c.sub.Unsubscribe()
 		}
+		c.markClosed()
 		close(c.sendChan)
 		c.conn.Close()
 	}()
@@ -187,7 +223,7 @@ func (c *Client) readPump() {
 		_, data, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				log.Printf("WebSocket error: %v", err)
+				c.relay.log(LogWarn, "WebSocket error: %v", err)
 			}
 			return
 		}
@@ -195,7 +231,7 @@ func (c *Client) readPump() {
 		// Validate it's a proper envelope before relaying
 		env, err := ParseEnvelope(data)
 		if err != nil {
-			log.Printf("Invalid message from client: %v", err)
+			c.relay.log(LogWarn, "Invalid message from client: %v", err)
 			continue
 		}
 
@@ -207,7 +243,7 @@ func (c *Client) readPump() {
 
 		// Publish to NATS
 		if err := c.relay.nc.Publish(subject, data); err != nil {
-			log.Printf("NATS publish error: %v", err)
+			c.relay.log(LogError, "NATS publish error: %v", err)
 			return
 		}
 	}
@@ -217,26 +253,28 @@ func (c *Client) readPump() {
 func (c *Client) handleIdentify(payload json.RawMessage) {
 	var p IdentifyPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
-		log.Printf("Invalid IDENTIFY payload: %v", err)
+		c.relay.log(LogWarn, "Invalid IDENTIFY payload: %v", err)
 		return
 	}
 
-	oldType := c.clientType
+	oldType := c.getClientType()
+	var newType ClientType
 
 	switch p.ClientType {
 	case "foundry":
-		c.clientType = ClientTypeFoundry
+		newType = ClientTypeFoundry
 	case "phone":
-		c.clientType = ClientTypePhone
+		newType = ClientTypePhone
 	default:
-		log.Printf("Unknown client type: %s", p.ClientType)
+		c.relay.log(LogWarn, "Unknown client type: %s", p.ClientType)
 		return
 	}
 
-	log.Printf("Client identified as %s in room %s", c.clientType, c.room)
+	c.setClientType(newType)
+	c.relay.log(LogInfo, "Client identified as %s in room %s", newType, c.room)
 
 	// If client type changed, broadcast new room status
-	if oldType != c.clientType {
+	if oldType != newType {
 		c.relay.broadcastRoomStatus(c.room)
 	}
 }
@@ -245,7 +283,7 @@ func (c *Client) handleIdentify(payload json.RawMessage) {
 func (c *Client) writePump() {
 	for data := range c.sendChan {
 		if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			log.Printf("WebSocket write error: %v", err)
+			c.relay.log(LogWarn, "WebSocket write error: %v", err)
 			return
 		}
 	}
@@ -258,6 +296,45 @@ func (c *Client) closeWithCode(code int, message string) {
 		websocket.FormatCloseMessage(code, message),
 	)
 	c.conn.Close()
+}
+
+// getClientType returns the client type (thread-safe).
+func (c *Client) getClientType() ClientType {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.clientType
+}
+
+// setClientType sets the client type (thread-safe).
+func (c *Client) setClientType(t ClientType) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clientType = t
+}
+
+// trySend attempts to send a message to the client's send channel.
+// Returns false if the channel is closed or full.
+func (c *Client) trySend(msg []byte) bool {
+	c.mu.RLock()
+	if c.closed {
+		c.mu.RUnlock()
+		return false
+	}
+	c.mu.RUnlock()
+
+	select {
+	case c.sendChan <- msg:
+		return true
+	default:
+		return false
+	}
+}
+
+// markClosed marks the client as closed (should be called before closing sendChan).
+func (c *Client) markClosed() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
 }
 
 // addToRoom registers a client in a room.
@@ -282,7 +359,7 @@ func (r *Relay) removeFromRoom(c *Client) {
 			delete(r.rooms, c.room)
 		}
 	}
-	log.Printf("Client left room %s", c.room)
+	r.log(LogInfo, "Client left room %s", c.room)
 }
 
 // RoomCount returns the number of active rooms.
@@ -303,6 +380,26 @@ func (r *Relay) ClientCount() int {
 	return count
 }
 
+// Stats returns current relay statistics.
+func (r *Relay) Stats() Stats {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	stats := Stats{RoomCount: len(r.rooms)}
+	for _, clients := range r.rooms {
+		for c := range clients {
+			stats.ClientCount++
+			switch c.getClientType() {
+			case ClientTypeFoundry:
+				stats.FoundryCount++
+			case ClientTypePhone:
+				stats.PhoneCount++
+			}
+		}
+	}
+	return stats
+}
+
 // isFoundryConnected checks if a Foundry client is connected to a room.
 func (r *Relay) isFoundryConnected(room string) bool {
 	r.mu.RLock()
@@ -314,7 +411,7 @@ func (r *Relay) isFoundryConnected(room string) bool {
 	}
 
 	for client := range clients {
-		if client.clientType == ClientTypeFoundry {
+		if client.getClientType() == ClientTypeFoundry {
 			return true
 		}
 	}
@@ -332,10 +429,16 @@ func (r *Relay) broadcastRoomStatus(room string) {
 
 	foundryConnected := false
 	for client := range clients {
-		if client.clientType == ClientTypeFoundry {
+		if client.getClientType() == ClientTypeFoundry {
 			foundryConnected = true
 			break
 		}
+	}
+
+	// Copy clients to send to (avoid holding lock during send)
+	clientList := make([]*Client, 0, len(clients))
+	for client := range clients {
+		clientList = append(clientList, client)
 	}
 	r.mu.RUnlock()
 
@@ -343,18 +446,11 @@ func (r *Relay) broadcastRoomStatus(room string) {
 		FoundryConnected: foundryConnected,
 	})
 	if err != nil {
-		log.Printf("Failed to create ROOM_STATUS message: %v", err)
+		r.log(LogError, "Failed to create ROOM_STATUS message: %v", err)
 		return
 	}
 
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	for client := range clients {
-		select {
-		case client.sendChan <- msg:
-		default:
-			// Channel full, skip
-		}
+	for _, client := range clientList {
+		client.trySend(msg)
 	}
 }

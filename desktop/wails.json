@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "VTT Remote",
+  "outputfilename": "vtt-remote-desktop",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Sam Phinizy",
+    "email": "sam@phin.tech"
+  },
+  "info": {
+    "companyName": "VTT Remote",
+    "productName": "VTT Remote Control Panel",
+    "productVersion": "1.0.0",
+    "copyright": "2024",
+    "comments": "Desktop control panel for VTT Remote relay server"
+  }
+}

@@ -1,4 +1,5 @@
-package main
+// Package relay provides the WebSocket/NATS relay for VTT Remote.
+package relay
 
 import "encoding/json"
 

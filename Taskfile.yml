@@ -6,7 +6,10 @@ vars:
   SERVER_DIR: server
   CLIENT_DIR: client-react
   MODULE_DIR: foundry-module
+  DESKTOP_DIR: desktop
   DOCS_DIR: docs
+  # Go bin path for wails CLI
+  WAILS: '{{.GOPATH | default (env "GOPATH") | default "~/go"}}/bin/wails'
   # Foundry data path - override with FOUNDRY_DATA env var
   FOUNDRY_DATA: '{{.FOUNDRY_DATA | default "/Users/sphinizy/foundrydata/Data"}}'
 
@@ -89,6 +92,96 @@ tasks:
     dir: '{{.SERVER_DIR}}'
     cmds:
       - go test -v -race ./...
+
+  # ================================
+  # Desktop App (Wails)
+  # ================================
+
+  install:wails:
+    desc: Install Wails CLI
+    cmds:
+      - go install github.com/wailsapp/wails/v2/cmd/wails@latest
+    status:
+      - which wails
+
+  install:desktop:
+    desc: Install desktop frontend npm dependencies
+    dir: '{{.DESKTOP_DIR}}/frontend'
+    cmds:
+      - npm install
+    sources:
+      - '{{.DESKTOP_DIR}}/frontend/package.json'
+      - '{{.DESKTOP_DIR}}/frontend/package-lock.json'
+    generates:
+      - '{{.DESKTOP_DIR}}/frontend/node_modules/.package-lock.json'
+
+  build:desktop:
+    desc: Build desktop app for current platform
+    deps: [install:wails, install:desktop, build:module]
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - mkdir -p phone-client
+      - cmd: cp -r ../{{.CLIENT_DIR}}/dist/* phone-client/
+        ignore_error: true
+      - '{{.WAILS}} build'
+      - mkdir -p ../{{.DIST_DIR}}
+      - cp -r build/bin/* ../{{.DIST_DIR}}/
+    sources:
+      - '{{.DESKTOP_DIR}}/*.go'
+      - '{{.DESKTOP_DIR}}/frontend/src/**/*'
+      - '{{.DESKTOP_DIR}}/wails.json'
+    generates:
+      - '{{.DIST_DIR}}/VTT Remote*'
+
+  build:desktop:darwin:
+    desc: Build desktop app for macOS (universal)
+    deps: [install:wails, install:desktop, build:module, build:client]
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - mkdir -p phone-client
+      - cp -r ../{{.CLIENT_DIR}}/dist/* phone-client/
+      - '{{.WAILS}} build -platform darwin/universal'
+      - cp -r build/bin/* ../{{.DIST_DIR}}/
+
+  build:desktop:windows:
+    desc: Build desktop app for Windows
+    deps: [install:wails, install:desktop, build:module, build:client]
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - mkdir -p phone-client
+      - cp -r ../{{.CLIENT_DIR}}/dist/* phone-client/
+      - '{{.WAILS}} build -platform windows/amd64'
+      - cp -r build/bin/* ../{{.DIST_DIR}}/
+
+  dev:desktop:
+    desc: Run desktop app in development mode
+    deps: [install:wails, install:desktop]
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - mkdir -p phone-client
+      - cmd: cp -r ../{{.CLIENT_DIR}}/dist/* phone-client/
+        ignore_error: true
+      - '{{.WAILS}} dev'
+
+  test:desktop:
+    desc: Run desktop Go tests
+    dir: '{{.DESKTOP_DIR}}'
+    cmds:
+      - go test -v -race ./...
+
+  test:relay:
+    desc: Run relay package tests
+    dir: pkg/relay
+    cmds:
+      - go test -v -race ./...
+
+  test:all:
+    desc: Run all tests (server, relay, desktop)
+    cmds:
+      - task: test:relay
+      - task: test:server
+      - task: test:desktop
+      - task: test:module
 
   # ================================
   # Foundry Module

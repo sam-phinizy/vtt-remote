@@ -1,4 +1,4 @@
-package main
+package relay
 
 import (
 	"net/http"
@@ -36,7 +36,7 @@ func setupTestRelay(t *testing.T) (*httptest.Server, *Relay, func()) {
 	t.Helper()
 	ns := startTestNATS(t)
 
-	r, err := NewRelay(ns.ClientURL())
+	r, err := NewRelay(Config{NatsURL: ns.ClientURL()})
 	if err != nil {
 		ns.Shutdown()
 		t.Fatalf("Failed to create relay: %v", err)
@@ -121,6 +121,23 @@ func TestRelayInvalidJoin(t *testing.T) {
 	}
 }
 
+// consumeRoomStatus reads and discards the initial ROOM_STATUS message.
+func consumeRoomStatus(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	_, data, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("Failed to read ROOM_STATUS: %v", err)
+	}
+	env, err := ParseEnvelope(data)
+	if err != nil {
+		t.Fatalf("Failed to parse ROOM_STATUS: %v", err)
+	}
+	if env.Type != TypeRoomStatus {
+		t.Fatalf("Expected ROOM_STATUS, got %s", env.Type)
+	}
+}
+
 func TestRelayMessageBroadcast(t *testing.T) {
 	server, _, cleanup := setupTestRelay(t)
 	defer cleanup()
@@ -137,6 +154,10 @@ func TestRelayMessageBroadcast(t *testing.T) {
 	conn2.WriteMessage(websocket.TextMessage, []byte(joinMsg))
 
 	time.Sleep(50 * time.Millisecond)
+
+	// Consume initial ROOM_STATUS messages
+	consumeRoomStatus(t, conn1)
+	consumeRoomStatus(t, conn2)
 
 	// Client 1 sends a message
 	moveMsg := `{"type":"MOVE","payload":{"direction":"up","tokenId":"tok1"}}`
@@ -207,6 +228,10 @@ func TestRelayMultipleRooms(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
+	// Consume initial ROOM_STATUS messages
+	consumeRoomStatus(t, conn1)
+	consumeRoomStatus(t, conn2)
+
 	if r.RoomCount() != 2 {
 		t.Errorf("RoomCount = %d, want 2", r.RoomCount())
 	}
@@ -225,5 +250,65 @@ func TestRelayMultipleRooms(t *testing.T) {
 	_, _, err2 := conn2.ReadMessage()
 	if err2 == nil {
 		t.Error("ROOM2 client should not receive ROOM1 message")
+	}
+}
+
+func TestRelayStats(t *testing.T) {
+	server, r, cleanup := setupTestRelay(t)
+	defer cleanup()
+
+	// Initially empty
+	stats := r.Stats()
+	if stats.RoomCount != 0 || stats.ClientCount != 0 {
+		t.Errorf("Initial stats not empty: %+v", stats)
+	}
+
+	// Add a client
+	conn1 := dialWS(t, server.URL)
+	defer conn1.Close()
+	conn1.WriteMessage(websocket.TextMessage, []byte(`{"type":"JOIN","payload":{"room":"STATS1"}}`))
+	time.Sleep(50 * time.Millisecond)
+
+	stats = r.Stats()
+	if stats.RoomCount != 1 || stats.ClientCount != 1 {
+		t.Errorf("Stats after 1 client: %+v", stats)
+	}
+
+	// Identify as foundry
+	conn1.WriteMessage(websocket.TextMessage, []byte(`{"type":"IDENTIFY","payload":{"clientType":"foundry"}}`))
+	time.Sleep(50 * time.Millisecond)
+
+	stats = r.Stats()
+	if stats.FoundryCount != 1 || stats.PhoneCount != 0 {
+		t.Errorf("Stats after foundry identify: %+v", stats)
+	}
+
+	// Add a phone client
+	conn2 := dialWS(t, server.URL)
+	defer conn2.Close()
+	conn2.WriteMessage(websocket.TextMessage, []byte(`{"type":"JOIN","payload":{"room":"STATS1"}}`))
+	conn2.WriteMessage(websocket.TextMessage, []byte(`{"type":"IDENTIFY","payload":{"clientType":"phone"}}`))
+	time.Sleep(50 * time.Millisecond)
+
+	stats = r.Stats()
+	if stats.RoomCount != 1 || stats.ClientCount != 2 || stats.FoundryCount != 1 || stats.PhoneCount != 1 {
+		t.Errorf("Stats after phone join: %+v", stats)
+	}
+}
+
+func TestValidateRoomCode(t *testing.T) {
+	valid := []string{"GAME", "game1", "ABC123", "test", "ABCD1234"}
+	invalid := []string{"AB", "ABC", "ABCDEFGHI", "game-1", "game_1", "game 1", ""}
+
+	for _, code := range valid {
+		if !ValidateRoomCode(code) {
+			t.Errorf("Expected %q to be valid", code)
+		}
+	}
+
+	for _, code := range invalid {
+		if ValidateRoomCode(code) {
+			t.Errorf("Expected %q to be invalid", code)
+		}
 	}
 }

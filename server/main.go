@@ -15,10 +15,11 @@ import (
 	"syscall"
 
 	"github.com/gorilla/websocket"
-	"github.com/nats-io/nats-server/v2/server"
+	"github.com/sam-phinizy/vtt-remote/pkg/natsutil"
+	"github.com/sam-phinizy/vtt-remote/pkg/relay"
 )
 
-var relay *Relay
+var relayInstance *relay.Relay
 
 //go:embed public/*
 var publicFS embed.FS
@@ -36,18 +37,25 @@ func main() {
 	flag.Parse()
 
 	// Start embedded NATS server
-	natsServer, err := startNATS()
+	natsServer, err := natsutil.Start()
 	if err != nil {
 		log.Fatalf("Failed to start NATS: %v", err)
 	}
 	defer natsServer.Shutdown()
 
+	log.Printf("Embedded NATS server running at %s", natsServer.ClientURL())
+
 	// Create relay connected to embedded NATS
-	relay, err = NewRelay(natsServer.ClientURL())
+	relayInstance, err = relay.NewRelay(relay.Config{
+		NatsURL: natsServer.ClientURL(),
+		OnLog: func(level relay.LogLevel, message string) {
+			log.Printf("[%s] %s", level, message)
+		},
+	})
 	if err != nil {
 		log.Fatalf("Failed to create relay: %v", err)
 	}
-	defer relay.Close()
+	defer relayInstance.Close()
 
 	// Set up HTTP routes
 	mux := http.NewServeMux()
@@ -107,30 +115,6 @@ func main() {
 	}
 }
 
-// startNATS initializes and starts the embedded NATS server.
-func startNATS() (*server.Server, error) {
-	opts := &server.Options{
-		Host:   "127.0.0.1",
-		Port:   -1, // Random available port
-		NoLog:  true,
-		NoSigs: true,
-	}
-
-	ns, err := server.NewServer(opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create NATS server: %w", err)
-	}
-
-	go ns.Start()
-
-	if !ns.ReadyForConnections(5 * 1e9) { // 5 second timeout
-		return nil, fmt.Errorf("NATS server not ready")
-	}
-
-	log.Printf("Embedded NATS server running at %s", ns.ClientURL())
-	return ns, nil
-}
-
 // handleWebSocket upgrades HTTP connections to WebSocket and bridges to NATS.
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -140,7 +124,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("New WebSocket connection from %s", r.RemoteAddr)
-	relay.HandleClient(conn)
+	relayInstance.HandleClient(conn)
 }
 
 // handleHealth returns a simple health check response.

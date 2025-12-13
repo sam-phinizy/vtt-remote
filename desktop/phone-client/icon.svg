@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#1a1a2e"/>
+  <g fill="#e94560">
+    <!-- D-pad cross -->
+    <rect x="206" y="100" width="100" height="312" rx="12"/>
+    <rect x="100" y="206" width="312" height="100" rx="12"/>
+    <!-- Up arrow -->
+    <path d="M256 130 L290 180 H222 Z"/>
+    <!-- Down arrow -->
+    <path d="M256 382 L222 332 H290 Z"/>
+    <!-- Left arrow -->
+    <path d="M130 256 L180 222 V290 Z"/>
+    <!-- Right arrow -->
+    <path d="M382 256 L332 290 V222 Z"/>
+  </g>
+  <!-- Center dot -->
+  <circle cx="256" cy="256" r="20" fill="#16213e"/>
+</svg>

@@ -1,4 +1,4 @@
-package main
+package relay
 
 import (
 	"encoding/json"
@@ -7,10 +7,10 @@ import (
 
 func TestParseEnvelope(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
+		name     string
+		input    string
 		wantType MessageType
-		wantErr bool
+		wantErr  bool
 	}{
 		{
 			name:     "valid JOIN message",
@@ -86,22 +86,5 @@ func TestMakeEnvelope(t *testing.T) {
 
 	if parsed.Room != "TEST1" {
 		t.Errorf("Room = %v, want TEST1", parsed.Room)
-	}
-}
-
-func TestRoomCodeRegex(t *testing.T) {
-	valid := []string{"GAME", "game1", "ABC123", "test", "ABCD1234"}
-	invalid := []string{"AB", "ABC", "ABCDEFGHI", "game-1", "game_1", "game 1", ""}
-
-	for _, code := range valid {
-		if !roomCodeRegex.MatchString(code) {
-			t.Errorf("Expected %q to be valid", code)
-		}
-	}
-
-	for _, code := range invalid {
-		if roomCodeRegex.MatchString(code) {
-			t.Errorf("Expected %q to be invalid", code)
-		}
 	}
 }
