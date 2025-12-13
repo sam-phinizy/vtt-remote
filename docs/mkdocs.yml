@@ -1,6 +1,6 @@
-site_name: VTT Remote
-site_description: Remote control for virtual tabletop applications
-site_url: https://docs.example.com  # Update to your docs domain
+site_name: Arcane Grimoire Docs
+site_description: Documentation portal
+site_url: https://docs.arcanegrimoire.com
 
 theme:
   name: material
@@ -54,17 +54,19 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quickstart.md
-  - User Guide:
-      - Phone Client: guide/phone-client.md
-      - Foundry Module: guide/foundry-module.md
-  - Development:
-      - Architecture: development/architecture.md
-      - Contributing: development/contributing.md
-  - API Reference:
-      - WebSocket Protocol: api/websocket.md
+  - VTT Remote:
+      - Overview: vtt-remote/index.md
+      - Getting Started:
+          - Installation: vtt-remote/getting-started/installation.md
+          - Quick Start: vtt-remote/getting-started/quickstart.md
+      - User Guide:
+          - Phone Client: vtt-remote/guide/phone-client.md
+          - Foundry Module: vtt-remote/guide/foundry-module.md
+      - Development:
+          - Architecture: vtt-remote/development/architecture.md
+          - Contributing: vtt-remote/development/contributing.md
+      - API Reference:
+          - WebSocket Protocol: vtt-remote/api/websocket.md
 
 extra:
   social:

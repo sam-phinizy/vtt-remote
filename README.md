@@ -4,7 +4,7 @@ A remote control system for Foundry Virtual Tabletop. Players connect their phon
 
 ## Documentation
 
-Full documentation available at **[docs.arcanegrimoire.com](https://docs.arcanegrimoire.com)**
+Full documentation available at **[docs.arcanegrimoire.com/vtt-remote](https://docs.arcanegrimoire.com/vtt-remote/)**
 
 ## Quick Start
 
