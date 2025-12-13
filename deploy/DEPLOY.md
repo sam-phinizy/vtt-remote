@@ -4,17 +4,17 @@
 
 ```bash
 cd deploy
-docker compose up -d
+docker compose --profile standalone up -d
 ```
 
-The relay will be available at `http://your-server:8181`
+The relay will be available at `http://localhost:80`
 
-## Production with SSL (Docker + Traefik)
+## With SSL (Docker + Traefik)
 
 1. Copy and edit environment file:
    ```bash
    cp .env.example .env
-   # Edit VTT_DOMAIN and ACME_EMAIL
+   # Set VTT_DOMAIN and ACME_EMAIL
    ```
 
 2. Start with Traefik profile:
@@ -24,21 +24,17 @@ The relay will be available at `http://your-server:8181`
 
 3. Point your domain's DNS to the server
 
-The relay will be available at `https://your-domain.com`
-
-## Production with nginx
+## With nginx + systemd
 
 1. Build the server:
    ```bash
-   cd server
-   go build -o vtt-relay .
+   task build:server
    ```
 
 2. Install files:
    ```bash
    sudo mkdir -p /opt/vtt-remote
-   sudo cp vtt-relay /opt/vtt-remote/
-   sudo cp -r ../client /opt/vtt-remote/
+   sudo cp server/server /opt/vtt-remote/vtt-relay
    ```
 
 3. Create service user:
@@ -49,46 +45,34 @@ The relay will be available at `https://your-domain.com`
 
 4. Install systemd service:
    ```bash
-   sudo cp vtt-remote.service /etc/systemd/system/
+   sudo cp deploy/vtt-remote.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now vtt-remote
    ```
 
 5. Configure nginx:
    ```bash
-   sudo cp nginx.conf /etc/nginx/sites-available/vtt-remote
-   # Edit server_name and SSL paths
+   sudo cp deploy/nginx.conf /etc/nginx/sites-available/vtt-remote
+   # Replace YOUR_DOMAIN with your actual domain
    sudo ln -s /etc/nginx/sites-available/vtt-remote /etc/nginx/sites-enabled/
    sudo nginx -t && sudo systemctl reload nginx
    ```
 
 6. Get SSL certificate:
    ```bash
-   sudo certbot --nginx -d vtt-remote.example.com
+   sudo certbot --nginx -d your-domain.com
    ```
 
 ## Foundry Configuration
 
 In Foundry, set the relay URL in module settings:
-- **With SSL:** `wss://vtt-remote.example.com/ws`
-- **Without SSL:** `ws://your-server:8181/ws`
-
-## Firewall
-
-Open required ports:
-```bash
-# With nginx (recommended)
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-
-# Direct access (no nginx)
-sudo ufw allow 8181/tcp
-```
+- **With SSL:** `wss://your-domain.com/ws`
+- **LAN only:** `ws://server-ip:8080/ws`
 
 ## Health Check
 
 ```bash
-curl http://localhost:8181/health
+curl http://localhost:8080/health
 ```
 
 ## Logs

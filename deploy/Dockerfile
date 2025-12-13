@@ -51,11 +51,11 @@ RUN adduser -D -u 1000 vttremote
 USER vttremote
 
 # Expose port
-EXPOSE 8181
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -qO- http://localhost:8181/health || exit 1
+    CMD wget -qO- http://localhost:8080/health || exit 1
 
 # Run
 CMD ["./vtt-relay"]
