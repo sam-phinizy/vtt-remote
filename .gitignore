@@ -54,3 +54,6 @@ logs/
 
 # OS files
 Thumbs.db
+
+# Claude Code local settings
+.claude/
