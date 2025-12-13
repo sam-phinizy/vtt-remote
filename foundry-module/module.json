@@ -2,7 +2,7 @@
   "id": "arcane-grimoire-vtt-remote",
   "title": "VTT Remote Control",
   "description": "Enable phone-based remote control for token movement in Foundry VTT",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "compatibility": {
     "minimum": "13",
     "verified": "13"
@@ -13,8 +13,12 @@
       "url": "https://github.com/sam-phinizy"
     }
   ],
-  "esmodules": ["scripts/main.js"],
-  "styles": ["styles/remote.css"],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/remote.css"
+  ],
   "languages": [
     {
       "lang": "en",
