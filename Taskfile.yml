@@ -274,18 +274,21 @@ tasks:
   # ================================
 
   deploy:
-    desc: Deploy to production server (remote.arcanegrimoire.com)
-    vars:
-      DEPLOY_HOST: root@178.156.195.35
-      DEPLOY_PATH: /opt/vtt-remote
+    desc: Deploy to production server (configure via deploy/.env or DEPLOY_HOST env var)
+    dotenv: ['deploy/.env']
     cmds:
       - |
-        echo "📦 Syncing files to {{.DEPLOY_HOST}}..."
-        rsync -avz --exclude='.git' --exclude='node_modules' --exclude='dist' --exclude='.claude' . {{.DEPLOY_HOST}}:{{.DEPLOY_PATH}}/
-      - |
+        DEPLOY_HOST="${DEPLOY_HOST:-user@your-server.example.com}"
+        DEPLOY_PATH="${DEPLOY_PATH:-/opt/vtt-remote}"
+        if [ "$DEPLOY_HOST" = "user@your-server.example.com" ]; then
+          echo "Error: Configure deploy target in deploy/.env or set DEPLOY_HOST env var"
+          echo "  Run: uv run scripts/setup-env.py"
+          exit 1
+        fi
+        echo "📦 Syncing files to $DEPLOY_HOST..."
+        rsync -avz --exclude='.git' --exclude='node_modules' --exclude='dist' --exclude='.claude' . "$DEPLOY_HOST:$DEPLOY_PATH/"
         echo "🐳 Building and restarting containers..."
-        ssh {{.DEPLOY_HOST}} 'cd {{.DEPLOY_PATH}}/deploy && docker compose --profile traefik build && docker compose --profile traefik up -d'
-      - |
+        ssh "$DEPLOY_HOST" "cd $DEPLOY_PATH/deploy && docker compose --profile traefik build && docker compose --profile traefik up -d"
         echo "✅ Verifying deployment..."
         sleep 3
-        ssh {{.DEPLOY_HOST}} 'curl -sf http://localhost:8080/health && echo " - Server healthy!"'
+        ssh "$DEPLOY_HOST" 'curl -sf http://localhost:8080/health && echo " - Server healthy!"'

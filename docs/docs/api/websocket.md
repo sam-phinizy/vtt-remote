@@ -7,7 +7,7 @@ The relay server uses a simple JSON-based WebSocket protocol.
 Connect to `/ws` endpoint:
 
 ```
-wss://remote.arcanegrimoire.com/ws
+wss://your-relay-server.example.com/ws
 ```
 
 ## Message Format

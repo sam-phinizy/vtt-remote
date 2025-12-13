@@ -1,5 +1,5 @@
 {
-  "id": "vtt-remote",
+  "id": "arcane-grimoire-vtt-remote",
   "title": "VTT Remote Control",
   "description": "Enable phone-based remote control for token movement in Foundry VTT",
   "version": "0.1.0",

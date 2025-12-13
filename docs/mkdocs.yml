@@ -1,6 +1,6 @@
 site_name: VTT Remote
 site_description: Remote control for virtual tabletop applications
-site_url: https://docs.arcanegrimoire.com
+site_url: https://docs.example.com  # Update to your docs domain
 
 theme:
   name: material

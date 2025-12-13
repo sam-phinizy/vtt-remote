@@ -8,7 +8,7 @@ Access module settings via **Game Settings** → **Module Settings** → **VTT R
 
 ### Relay Server URL
 
-The WebSocket relay server URL. Default uses the public relay at `wss://remote.arcanegrimoire.com/ws`.
+The WebSocket relay server URL. Point this to your self-hosted relay (e.g., `wss://your-relay.example.com/ws`).
 
 ### Room Code
 
