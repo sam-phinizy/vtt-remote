@@ -74,5 +74,21 @@ services:
       - "traefik.http.routers.vtt.tls.certresolver=letsencrypt"
       - "traefik.http.services.vtt.loadbalancer.server.port=8080"
 
+  # Documentation site (MkDocs Material)
+  docs:
+    build:
+      context: ../docs
+      dockerfile: Dockerfile
+    container_name: vtt-docs
+    profiles:
+      - traefik
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.docs.rule=Host(`${DOCS_DOMAIN:-docs.arcanegrimoire.com}`)"
+      - "traefik.http.routers.docs.entrypoints=websecure"
+      - "traefik.http.routers.docs.tls.certresolver=letsencrypt"
+      - "traefik.http.services.docs.loadbalancer.server.port=80"
+
 volumes:
   traefik-certs:
