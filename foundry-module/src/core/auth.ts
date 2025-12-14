@@ -10,7 +10,7 @@
 let nodeCreateHash: typeof import('crypto').createHash | null = null;
 try {
   // Dynamic import that won't break in browser bundling
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
   nodeCreateHash = require('crypto').createHash;
 } catch {
   // Running in browser - crypto not available
