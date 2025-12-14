@@ -56,6 +56,7 @@ export namespace main {
 	    state: string;
 	    port: number;
 	    localIP: string;
+	    localHostname: string;
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -67,6 +68,7 @@ export namespace main {
 	        this.state = source["state"];
 	        this.port = source["port"];
 	        this.localIP = source["localIP"];
+	        this.localHostname = source["localHostname"];
 	        this.error = source["error"];
 	    }
 	}

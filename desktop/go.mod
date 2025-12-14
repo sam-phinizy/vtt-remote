@@ -10,6 +10,7 @@ require (
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.4.3-default-no-op // indirect
 	github.com/bep/debounce v1.2.1 // indirect
+	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/go-tpm v0.9.6 // indirect
@@ -24,6 +25,7 @@ require (
 	github.com/leaanthony/u v1.1.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/miekg/dns v1.1.27 // indirect
 	github.com/minio/highwayhash v1.0.4-0.20251030100505-070ab1a87a76 // indirect
 	github.com/nats-io/jwt/v2 v2.8.0 // indirect
 	github.com/nats-io/nats-server/v2 v2.12.2 // indirect
@@ -47,6 +49,7 @@ require (
 )
 
 require (
+	github.com/grandcat/zeroconf v1.0.0
 	github.com/sam-phinizy/vtt-remote/pkg/natsutil v0.0.0
 	github.com/sam-phinizy/vtt-remote/pkg/relay v0.0.0
 )

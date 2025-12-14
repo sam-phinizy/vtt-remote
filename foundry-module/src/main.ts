@@ -296,10 +296,11 @@ function ensureRoomCode(): string {
 // WEBSOCKET CONNECTION (Shell)
 // =============================================================================
 
-const RELAY_PORT = 8181;
+const RELAY_PORT = 8080;
 
 /**
- * Get the relay WebSocket URL, auto-detecting from current hostname if not configured.
+ * Get the relay WebSocket URL.
+ * Defaults to vtt-remote.local (mDNS) if not configured.
  */
 function getRelayUrl(): string {
   const configured = game.settings?.get(MODULE_ID, 'relayServerUrl') as string;
@@ -322,9 +323,9 @@ function getRelayUrl(): string {
     // Add appropriate WebSocket protocol based on Foundry's protocol
     const protocol = isSecure ? 'wss://' : 'ws://';
 
-    // If HTTP (insecure) and no port specified, add :8080 for plain WS
+    // If HTTP (insecure) and no port specified, add default port
     if (!isSecure && !url.includes(':')) {
-      url = `${url}:8080`;
+      url = `${url}:${RELAY_PORT}`;
     }
 
     url = `${protocol}${url}`;
@@ -335,10 +336,11 @@ function getRelayUrl(): string {
     }
     return url;
   }
-  // Auto-detect: use same hostname as Foundry, default relay port
-  // Match protocol to Foundry's protocol
-  const hostname = window.location.hostname || 'localhost';
+
+  // Default to same hostname as Foundry (works when desktop app is on same machine)
+  // For remote connections, users must configure the relay URL in module settings
   const protocol = isSecure ? 'wss://' : 'ws://';
+  const hostname = window.location.hostname;
   return `${protocol}${hostname}:${RELAY_PORT}/ws`;
 }
 

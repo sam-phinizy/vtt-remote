@@ -10,9 +10,6 @@ import {
   GetLogs,
   ClearLogs,
   SetPort,
-  DetectFoundryPath,
-  GetModuleStatus,
-  InstallModule,
 } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
@@ -21,6 +18,7 @@ interface ServerStatus {
   state: string;
   port: number;
   localIP: string;
+  localHostname: string;
   error?: string;
 }
 
@@ -37,18 +35,12 @@ interface LogEntry {
   message: string;
 }
 
-interface ModuleStatus {
-  installed: boolean;
-  version?: string;
-  dataPath: string;
-  pathExists: boolean;
-}
-
 function App() {
   const [status, setStatus] = useState<ServerStatus>({
     state: 'stopped',
     port: 8080,
     localIP: '',
+    localHostname: '',
   });
   const [stats, setStats] = useState<ClientStats>({
     roomCount: 0,
@@ -59,20 +51,12 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [serverURL, setServerURL] = useState('');
   const [portInput, setPortInput] = useState('8080');
-  const [foundryPath, setFoundryPath] = useState('');
-  const [moduleStatus, setModuleStatus] = useState<ModuleStatus | null>(null);
 
   // Fetch initial status
   useEffect(() => {
     GetStatus().then(setStatus);
     GetServerURL().then(setServerURL);
     GetLogs().then(setLogs);
-    DetectFoundryPath().then((path) => {
-      setFoundryPath(path);
-      if (path) {
-        GetModuleStatus(path).then(setModuleStatus);
-      }
-    });
   }, []);
 
   // Subscribe to events
@@ -144,17 +128,6 @@ function App() {
       console.error('Failed to set port:', err);
     }
   }, [portInput]);
-
-  const handleInstallModule = useCallback(async () => {
-    if (!foundryPath) return;
-    try {
-      await InstallModule(foundryPath);
-      GetModuleStatus(foundryPath).then(setModuleStatus);
-    } catch (err) {
-      console.error('Failed to install module:', err);
-      alert(`Failed to install module: ${err}`);
-    }
-  }, [foundryPath]);
 
   const handleClearLogs = useCallback(() => {
     ClearLogs();
@@ -266,27 +239,28 @@ function App() {
             </div>
           </section>
 
-          {/* Module Installer Panel */}
+          {/* Foundry Connection Panel */}
           <section className="panel">
-            <h2>Foundry Module</h2>
-            {foundryPath ? (
+            <h2>Foundry Connection</h2>
+            {isRunning ? (
               <>
                 <div className="info-row">
-                  <label>Data Path:</label>
-                  <span className="path">{foundryPath}</span>
+                  <label>Hostname:</label>
+                  <span className="url-display">{status.localHostname}</span>
                 </div>
                 <div className="info-row">
-                  <label>Status:</label>
-                  <span className={moduleStatus?.installed ? 'installed' : 'not-installed'}>
-                    {moduleStatus?.installed ? 'Installed' : 'Not Installed'}
+                  <label>WebSocket:</label>
+                  <span className="url-display" style={{ flex: 1, textAlign: 'left' }}>
+                    ws://{status.localHostname}:{status.port}/ws
                   </span>
                 </div>
-                <button onClick={handleInstallModule} className="btn">
-                  {moduleStatus?.installed ? 'Reinstall Module' : 'Install Module'}
-                </button>
+                <div className="info-row" style={{ opacity: 0.7, fontSize: '0.85em' }}>
+                  <label>Fallback IP:</label>
+                  <span>{status.localIP}:{status.port}</span>
+                </div>
               </>
             ) : (
-              <p className="not-found">Foundry VTT data directory not found</p>
+              <p className="not-found">Start server to see connection info</p>
             )}
           </section>
         </div>

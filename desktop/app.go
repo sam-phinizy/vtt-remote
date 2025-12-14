@@ -11,10 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/grandcat/zeroconf"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/sam-phinizy/vtt-remote/pkg/natsutil"
@@ -36,10 +38,11 @@ const (
 
 // ServerStatus contains the current server status.
 type ServerStatus struct {
-	State   ServerState `json:"state"`
-	Port    int         `json:"port"`
-	LocalIP string      `json:"localIP"`
-	Error   string      `json:"error,omitempty"`
+	State         ServerState `json:"state"`
+	Port          int         `json:"port"`
+	LocalIP       string      `json:"localIP"`
+	LocalHostname string      `json:"localHostname"`
+	Error         string      `json:"error,omitempty"`
 }
 
 // ClientStats contains connected client statistics.
@@ -72,6 +75,7 @@ type App struct {
 	nats        *natsutil.EmbeddedNATS
 	relay       *relay.Relay
 	httpServer  *http.Server
+	mdnsServer  *zeroconf.Server
 	serverState ServerState
 	port        int
 	logs        []LogEntry
@@ -201,6 +205,24 @@ func (a *App) StartServer() error {
 	a.serverState = StateRunning
 	a.mu.Unlock()
 
+	// Register mDNS hostname (vtt-remote.local)
+	mdns, err := zeroconf.Register(
+		"vtt-remote",     // Instance name (becomes vtt-remote.local)
+		"_http._tcp",     // Service type
+		"local.",         // Domain
+		port,             // Port
+		[]string{"path=/ws"}, // TXT records
+		nil,              // Interfaces (nil = all)
+	)
+	if err != nil {
+		a.addLog("warn", fmt.Sprintf("mDNS registration failed: %v", err))
+	} else {
+		a.mu.Lock()
+		a.mdnsServer = mdns
+		a.mu.Unlock()
+		a.addLog("info", "Registered vtt-remote.local via mDNS")
+	}
+
 	a.emitStatus()
 	a.addLog("info", fmt.Sprintf("Server started on port %d", port))
 	return nil
@@ -218,13 +240,18 @@ func (a *App) StopServer() error {
 	httpServer := a.httpServer
 	relayInstance := a.relay
 	natsInstance := a.nats
+	mdnsInstance := a.mdnsServer
 	a.httpServer = nil
 	a.relay = nil
 	a.nats = nil
+	a.mdnsServer = nil
 	a.serverState = StateStopped
 	a.mu.Unlock()
 
 	// Shutdown outside of lock
+	if mdnsInstance != nil {
+		mdnsInstance.Shutdown()
+	}
 	if httpServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = httpServer.Shutdown(ctx)
@@ -248,9 +275,10 @@ func (a *App) GetStatus() ServerStatus {
 	defer a.mu.RUnlock()
 
 	return ServerStatus{
-		State:   a.serverState,
-		Port:    a.port,
-		LocalIP: getLocalIP(),
+		State:         a.serverState,
+		Port:          a.port,
+		LocalIP:       getLocalIP(),
+		LocalHostname: getLocalHostname(),
 	}
 }
 
@@ -463,9 +491,10 @@ func (a *App) emitStatus() {
 func (a *App) emitStatusLocked() {
 	if a.ctx != nil {
 		status := ServerStatus{
-			State:   a.serverState,
-			Port:    a.port,
-			LocalIP: getLocalIP(),
+			State:         a.serverState,
+			Port:          a.port,
+			LocalIP:       getLocalIP(),
+			LocalHostname: getLocalHostname(),
 		}
 		wailsruntime.EventsEmit(a.ctx, "serverStatus", status)
 	}
@@ -481,4 +510,17 @@ func getLocalIP() string {
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+
+// getLocalHostname returns the machine's .local mDNS hostname.
+func getLocalHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	// On macOS, hostname may already include .local suffix
+	if strings.HasSuffix(hostname, ".local") {
+		return hostname
+	}
+	return hostname + ".local"
 }
